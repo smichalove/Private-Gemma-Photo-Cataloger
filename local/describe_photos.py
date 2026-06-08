@@ -390,7 +390,7 @@ def add_or_update_result(results_list: List[Dict[str, Union[str, List[str]]]], p
 def process_batches(
     image_paths: List[str], 
     results: List[Dict[str, Union[str, List[str]]]], 
-    prompt_text: str,
+    prompt_path: str,
     batch_size: int,
     max_workers: int,
     output_json: str,
@@ -401,7 +401,7 @@ def process_batches(
     Args:
         image_paths: List of file paths to process.
         results: The mutable list holding all descriptions.
-        prompt_text: The instructions dynamically loaded from prompt.txt.
+        prompt_path: The file path to prompt.txt loaded dynamically.
         batch_size: Grouping dimension for inference.
         max_workers: Parallel thread count for disk loads.
         output_json: The absolute path to write the output JSON file.
@@ -431,6 +431,18 @@ def process_batches(
                 
                 logger.info(f"Processing batch {batch_start // batch_size + 1} / {(total + batch_size - 1) // batch_size}")
                 
+                # Dynamically load/refresh prompt instructions at runtime right before model invocation
+                active_prompt: str = ""
+                try:
+                    if os.path.exists(prompt_path):
+                        with open(prompt_path, "r", encoding="utf-8") as f:
+                            active_prompt = f.read().strip()
+                except Exception as pe:
+                    logger.warning(f"Failed to dynamically load prompt from {prompt_path}: {pe}")
+                
+                if not active_prompt:
+                    active_prompt = "Analyze this image and catalog its content."
+
                 batch_b64s: List[str] = []
                 valid_paths: List[str] = []
                 
@@ -451,7 +463,7 @@ def process_batches(
                     continue
                     
                 try:
-                    raw_responses = wsl_client.query_vlm_server_base64(batch_b64s, prompt_text)
+                    raw_responses = wsl_client.query_vlm_server_base64(batch_b64s, active_prompt)
                     
                     for path, raw_text in zip(valid_paths, raw_responses):
                         metadata = extract_json_payload(raw_text)
@@ -649,7 +661,7 @@ def main() -> None:
     process_batches(
         images, 
         results, 
-        prompt_text, 
+        prompt_path, 
         args.batch_size, 
         args.max_workers, 
         args.output,
