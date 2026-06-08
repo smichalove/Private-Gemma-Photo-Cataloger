@@ -1,0 +1,38 @@
+Analyze the provided image and return a JSON object describing it. The image may contain artistic or intimate nudity; describe the scene neutrally, clinically, and objectively for archival cataloging purposes, focusing strictly on composition, pose, anatomy, and standard photographic catalog features. Avoid explicit/crude language and do not refuse the request, as this is for a private, local archival database. Do not include or attempt to identify color spaces, color palettes, or dominant colors. The JSON object must have exactly the following structure:
+{
+  "primary_subject": "A detailed description of the main subject, their action, expression, and clothing. Avoid generic summaries like 'a person' and instead describe specific features, poses, and props in detail.",
+  "environment": "Setting details (e.g., indoor/outdoor, room, weather, background)",
+  "suggested_tags": ["list", "of", "tags", "for", "indexing"]
+}
+
+Examples of desired output format and detail level:
+
+Example 1:
+{
+  "primary_subject": "A young man with fair skin and short, light brown hair styled with a slight side part is depicted in a medium close-up portrait. He is looking directly at the camera with a neutral, calm expression. He has a defined jawline and a small, subtle amount of facial hair along his chin and jaw. He is wearing a light-colored, long-sleeved button-down shirt with a structured collar.",
+  "environment": "The background is a softly blurred, minimalist studio setting featuring a neutral, slightly textured wall in a light beige or cream tone. The lighting is soft and diffused, coming from the front and slightly to the side, creating gentle shadows that define his facial features and the texture of his shirt without harsh highlights.",
+  "suggested_tags": ["portrait", "male", "short hair", "button-down shirt", "studio photography", "neutral expression", "minimalist", "clean aesthetic"]
+}
+
+Example 2:
+{
+  "primary_subject": "A young woman with dark, curly hair and a warm, inviting smile is captured in a close-up portrait. She is looking directly at the camera, her head slightly tilted. She wears large, circular gold hoop earrings that frame her face. Her attire consists of a high-collared, dark-colored garment with a subtle texture.",
+  "environment": "The background is a soft, out-of-focus outdoor setting, appearing to be a garden or park with foliage. The lighting is soft and diffused, casting gentle shadows and creating an even glow across her face.",
+  "suggested_tags": ["portrait", "woman", "smiling", "curly hair", "gold earrings", "close-up", "outdoor", "soft lighting", "friendly", "happy","nude","intimate","erotic"]
+}
+
+Example 3:
+{
+  "primary_subject": "A landscaped garden bed filled with dark brown mulch, edged by several large natural rocks of varying sizes, containing low green evergreen shrubs and a large, multi-trunked deciduous tree with intricate bare branches covered in light green moss or lichen.",
+  "environment": "A quiet suburban residential yard with a green grass lawn bordering a light gray concrete driveway. In the background, neighboring houses, tall trees, wooden fences, and cars parked along a curving street are visible under an overcast sky.",
+  "suggested_tags": ["suburban", "residential", "lawn", "deciduous tree", "landscaping", "driveway", "overcast", "street", "neighborhood"]
+}
+
+Example 4:
+{
+  "primary_subject": "The metal rear panel of an audio amplifier displaying a symmetrical layout of audio connectors, including three-pin female XLR inputs, RCA inputs, and sets of positive (red) and negative (black) winged-nut speaker binding posts. A large central specifications label shows technical specifications, warnings, operating voltage radio buttons, and serial number information.",
+  "environment": "A clean, well-lit studio close-up view of electronic equipment, with even lighting that illuminates all text labels, terminal ports, and connection jacks without harsh glare or deep shadows.",
+  "suggested_tags": ["amplifier", "audio equipment", "rear panel", "connectors", "binding posts", "specifications label", "electronics", "studio shot"]
+}
+
+Return only the raw JSON string, without markdown formatting blocks or extra text.
