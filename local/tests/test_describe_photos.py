@@ -51,7 +51,7 @@ import sys
 import json
 import unittest
 from unittest.mock import patch, MagicMock, mock_open
-from typing import Dict, List, Set, Optional, Tuple, Any
+from typing import Dict, List, Set, Optional, Tuple
 
 # Ensure local directory is in sys.path to allow importing describe_photos
 local_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

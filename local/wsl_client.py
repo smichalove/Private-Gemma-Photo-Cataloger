@@ -72,7 +72,7 @@ import base64
 import io
 import time
 import logging
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Union
 
 import requests
 from PIL import Image, ImageFile
@@ -264,7 +264,7 @@ def query_vlm_server_base64(images_base64: List[str], prompt_text: str) -> List[
     Raises:
         RuntimeError: If connection or inference requests fail.
     """
-    payload: Dict[str, Any] = {
+    payload: Dict[str, Union[List[str], str]] = {
         "images_base64": images_base64,
         "prompt_text": prompt_text
     }

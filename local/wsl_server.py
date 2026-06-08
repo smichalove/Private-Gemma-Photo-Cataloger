@@ -68,7 +68,7 @@ import sys
 import base64
 import io
 import logging
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Union
 
 import torch
 from transformers import AutoProcessor, AutoModelForMultimodalLM, BitsAndBytesConfig
@@ -147,7 +147,7 @@ def patch_gemma4_unified() -> None:
     try:
         import transformers.models.gemma4_unified.modeling_gemma4_unified as m
         
-        def patched_forward(self: Any, pixel_values: torch.Tensor, image_position_ids: torch.Tensor) -> torch.Tensor:
+        def patched_forward(self: "m.Gemma4UnifiedVisionEmbedder", pixel_values: torch.Tensor, image_position_ids: torch.Tensor) -> torch.Tensor:
             target_dtype = self.patch_ln1.weight.dtype
             hidden_states = self.patch_ln1(pixel_values.to(target_dtype))
             hidden_states = self.patch_dense(hidden_states)
@@ -246,7 +246,7 @@ def describe_images(request: DescriptionRequest) -> DescriptionResponse:
         
         prompts: List[str] = []
         for _ in range(len(pil_images)):
-            messages: List[Dict[str, Any]] = [
+            messages: List[Dict[str, Union[str, List[Dict[str, str]]]]] = [
                 {
                     "role": "system",
                     "content": request.prompt_text
