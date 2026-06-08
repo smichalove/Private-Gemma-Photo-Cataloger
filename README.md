@@ -89,7 +89,21 @@ You must install **ExifTool** locally on the host machine:
     ```bash
     cp .env.example .env
     ```
-5.  Configure `.env` with your photo directories, local container names, and local server parameters.
+5.  Configure `.env` with your photo directories and execution parameters. Here is a baseline example of the configuration:
+    ```env
+    # Comma-separated list of directories to scan (e.g., C:\Pictures,D:\Photos)
+    PICTURE_DIRECTORIES=C:\path\to\your\pictures,D:\another\folder
+
+    # Database and tracking paths
+    OUTPUT_DATABASE_PATH=photo_descriptions.json
+    SUBMITTED_CACHE_PATH=submitted_photos_cache.txt
+
+    # Path to the ExifTool executable (defaults to "exiftool" if in system PATH)
+    EXIFTOOL_PATH=exiftool
+
+    # Optional Hugging Face Token (only needed for initial model download if weights aren't cached)
+    HF_TOKEN=
+    ```
 
 > [!NOTE]
 > **Host vs. Server Dependency Isolation**
