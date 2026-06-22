@@ -59,6 +59,7 @@ AGENT GUIDELINE FOR MODIFICATION:
 import os
 import sys
 import json
+import sqlite3
 import time
 import logging
 import concurrent.futures
@@ -68,7 +69,7 @@ import argparse
 import uuid
 import base64
 import io
-from typing import List, Dict, Set, Optional, Tuple, Union
+from typing import List, Dict, Set, Optional, Tuple, Union, Any
 
 from PIL import Image, ImageFile
 Image.MAX_IMAGE_PIXELS = None  # Allow massively high-res images to be processed
@@ -117,6 +118,7 @@ logger = logging.getLogger(__name__)
 # --- Configuration defaults ---
 MODEL_ID: str = os.environ.get("GEMINI_MODEL_NAME", "google/gemma-4-12B-it")
 OUTPUT_JSON: str = os.environ.get("OUTPUT_DATABASE_PATH", "photo_descriptions.json")
+DB_PATH: str = os.environ.get("OUTPUT_DATABASE_SQLITE", os.path.join(os.path.dirname(os.path.abspath(__file__)), "photo_catalog.db"))
 SUBMITTED_CACHE: str = os.environ.get("SUBMITTED_CACHE_PATH", "submitted_photos_cache.txt")
 EXIFTOOL_PATH: str = os.environ.get("EXIFTOOL_PATH", "exiftool")
 
@@ -125,6 +127,8 @@ PICTURE_DIRS: List[str] = [d.strip() for d in _raw_dirs.split(",") if d.strip()]
 
 # Threading lock for saving the JSON database file safely
 json_lock: threading.Lock = threading.Lock()
+# Threading lock for saving the SQLite database safely
+sqlite_lock: threading.Lock = threading.Lock()
 
 
 def get_relative_path(full_path: str, scan_dirs: List[str]) -> str:
@@ -318,6 +322,95 @@ def save_results(results: List[Dict[str, Union[str, List[str]]]], output_json: s
             logger.error(f"Failed to save results to {output_json}: {e}")
 
 
+def save_results_to_sqlite(db_path: str, results_to_save: List[Dict[str, Any]], scan_dirs: List[str]) -> None:
+    """Saves/upserts cataloging results directly to the SQLite database.
+
+    Args:
+        db_path: The absolute path to the SQLite database file.
+        results_to_save: A list of dicts containing image paths and cataloging metadata.
+        scan_dirs: The list of base directories to compute relative paths against.
+
+    Returns:
+        None
+
+    Raises:
+        sqlite3.Error: If a database operation fails.
+    """
+    if not results_to_save:
+        return
+
+    with sqlite_lock:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        try:
+            # Build schema if not exists
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS photos (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    full_path TEXT UNIQUE NOT NULL,
+                    rel_path TEXT NOT NULL,
+                    primary_subject TEXT,
+                    environment TEXT,
+                    suggested_tags TEXT,
+                    technical_details TEXT,
+                    detected_objects TEXT
+                )
+            """)
+            cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_photos_full_path ON photos (full_path)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_rel_path ON photos (rel_path)")
+            
+            insert_data: List[Tuple[str, str, str, str, str, str, str]] = []
+            for item in results_to_save:
+                full_path: str = item.get("full_path", "")
+                if not full_path:
+                    continue
+                
+                rel_path: str = get_relative_path(full_path, scan_dirs)
+                primary_subject: str = item.get("primary_subject", "")
+                environment: str = item.get("environment", "")
+                
+                # Serialize collections to JSON strings
+                tags: List[str] = item.get("suggested_tags", [])
+                suggested_tags: str = json.dumps(tags)
+                
+                technical_details: str = item.get("technical_details", "")
+                
+                objects: List[str] = item.get("detected_objects", [])
+                detected_objects: str = json.dumps(objects)
+                
+                insert_data.append((
+                    full_path,
+                    rel_path,
+                    primary_subject,
+                    environment,
+                    suggested_tags,
+                    technical_details,
+                    detected_objects
+                ))
+
+            if insert_data:
+                cursor.executemany("""
+                    INSERT INTO photos (
+                        full_path, rel_path, primary_subject, environment, suggested_tags, technical_details, detected_objects
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(full_path) DO UPDATE SET
+                        rel_path=excluded.rel_path,
+                        primary_subject=excluded.primary_subject,
+                        environment=excluded.environment,
+                        suggested_tags=excluded.suggested_tags,
+                        technical_details=excluded.technical_details,
+                        detected_objects=excluded.detected_objects
+                """, insert_data)
+                conn.commit()
+                logger.info(f"Saved {len(insert_data)} records directly to SQLite database: {db_path}")
+        except sqlite3.Error as e:
+            logger.error(f"Failed to save results to SQLite: {e}")
+            conn.rollback()
+            raise e
+        finally:
+            conn.close()
+
+
 def extract_json_payload(raw_text: str) -> Dict[str, Union[str, List[str]]]:
     """Cleans up markdown code fences and parses the JSON response.
 
@@ -394,7 +487,9 @@ def process_batches(
     batch_size: int,
     max_workers: int,
     output_json: str,
-    embed_exif: bool = False
+    embed_exif: bool = False,
+    db_path: Optional[str] = None,
+    scan_dirs: Optional[List[str]] = None
 ) -> None:
     """Processes images in batches using parallel loading and WSL2 backend VLM server.
 
@@ -406,6 +501,8 @@ def process_batches(
         max_workers: Parallel thread count for disk loads.
         output_json: The absolute path to write the output JSON file.
         embed_exif: If True, write metadata back to EXIF tags.
+        db_path: Optional database path to save SQLite catalog data.
+        scan_dirs: List of base directories to compute relative paths against.
 
     Returns:
         None
@@ -465,11 +562,23 @@ def process_batches(
                 try:
                     raw_responses = wsl_client.query_vlm_server_base64(batch_b64s, active_prompt)
                     
+                    batch_results_to_save: List[Dict[str, Any]] = []
                     for path, raw_text in zip(valid_paths, raw_responses):
                         metadata = extract_json_payload(raw_text)
                         logger.info(f"Processed: {path}")
                         
                         add_or_update_result(results, path, metadata)
+                        
+                        # Prepare db_item dictionary matching SQLite table schema
+                        db_item: Dict[str, Any] = {
+                            "full_path": path,
+                            "primary_subject": metadata.get("primary_subject", ""),
+                            "environment": metadata.get("environment", ""),
+                            "suggested_tags": metadata.get("suggested_tags", []),
+                            "technical_details": metadata.get("technical_details", ""),
+                            "detected_objects": metadata.get("detected_objects", [])
+                        }
+                        batch_results_to_save.append(db_item)
                         
                         if embed_exif:
                             summary_text: str = (
@@ -480,6 +589,12 @@ def process_batches(
                             exif_executor.submit(inline_embed_metadata, path, summary_text, output_json)
 
                     save_results(results, output_json)
+                    
+                    if db_path and scan_dirs:
+                        try:
+                            save_results_to_sqlite(db_path, batch_results_to_save, scan_dirs)
+                        except Exception as sqle:
+                            logger.error(f"Failed to save batch results to SQLite: {sqle}")
 
                 except Exception as e:
                     logger.error(f"Batch generation failed: {e}", exc_info=True)
@@ -545,6 +660,12 @@ def main() -> None:
         type=str,
         default=OUTPUT_JSON,
         help="Path to the output photo descriptions JSON database."
+    )
+    parser.add_argument(
+        "--db",
+        type=str,
+        default=DB_PATH,
+        help="Path to the output photo descriptions SQLite database. Set to empty or None to disable SQLite database writes."
     )
     parser.add_argument(
         "--submitted-cache",
@@ -658,6 +779,11 @@ def main() -> None:
         
     logger.info("Commencing batch generation...")
     start_time = time.time()
+    
+    db_arg = args.db
+    if db_arg and db_arg.lower() in ("none", "null", ""):
+        db_arg = None
+        
     process_batches(
         images, 
         results, 
@@ -665,7 +791,9 @@ def main() -> None:
         args.batch_size, 
         args.max_workers, 
         args.output,
-        embed_exif=args.embed_exif
+        embed_exif=args.embed_exif,
+        db_path=db_arg,
+        scan_dirs=target_dirs
     )
     end_time = time.time()
     logger.info(f"PROCESSED: {len(images)} images in {end_time - start_time:.2f} seconds")

@@ -2,18 +2,20 @@
 :: Windows Batch script to force VLM description and metadata embedding on a single image file
 setlocal enabledelayedexpansion
 
-:: Ensure working directory is the script's directory
-cd /d "%~dp0"
-
 echo ==================================================
 echo       Force Re-evaluation on Single File
 echo ==================================================
+
+echo Resolved Paths at Runtime:
+if exist "%~dp0venv\Scripts\activate.bat" (echo   - Virtual Env:  "%~dp0venv\Scripts\activate.bat" [FOUND]) else (echo   - Virtual Env:  "%~dp0venv\Scripts\activate.bat" [NOT FOUND])
+if exist "%~dp0local\describe_photos.py" (echo   - Orchestrator: "%~dp0local\describe_photos.py" [FOUND]) else (echo   - Orchestrator: "%~dp0local\describe_photos.py" [NOT FOUND])
+echo   - Working Dir:   "%CD%"
 echo(
 
 :: 1. Check if the virtual environment activation script exists
-if not exist "venv\Scripts\activate.bat" (
-    echo [ERROR] Virtual environment 'venv' not found.
-    echo Please create it first by running: python -m venv venv
+if not exist "%~dp0venv\Scripts\activate.bat" (
+    echo [ERROR] Python virtual environment 'venv' not found.
+    echo Please create it first by running: python -m venv "%~dp0venv"
     goto end
 )
 
@@ -36,7 +38,7 @@ if not exist "%TARGET_FILE%" (
 :: 3. Attempt to activate the virtual environment
 echo(
 echo Activating virtual environment...
-call venv\Scripts\activate.bat
+call "%~dp0venv\Scripts\activate.bat"
 if errorlevel 1 (
     echo [ERROR] Failed to activate the virtual environment.
     goto end
@@ -52,7 +54,7 @@ if errorlevel 1 (
 :: 5. Execute cataloger for single file with EXIF embedding enabled
 echo(
 echo Starting single file cataloger run...
-python local/describe_photos.py --file "%TARGET_FILE%" --batch-size 1 --embed-exif
+python "%~dp0local\describe_photos.py" --file "%TARGET_FILE%" --batch-size 1 --embed-exif
 
 if errorlevel 1 (
     echo(
@@ -65,3 +67,4 @@ if errorlevel 1 (
 :end
 echo(
 pause
+

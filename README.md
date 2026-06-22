@@ -1,8 +1,18 @@
-# Local Gemma 4 Offline Photo Cataloger
+---
+title: "Local Gemma 4 Offline Photo Cataloger (v2.0.0)"
+description: "A private, offline vision-language-driven photo cataloging pipeline. Scans local images, generates descriptive metadata using Google's Gemma 4 VLM inside a WSL2 Docker container, saves to SQLite/JSON, and embeds description headers natively back into EXIF tags."
+keywords: ["gemma-4-vlm", "offline-photo-cataloger", "local-vision-language-model", "exif-metadata-embedding", "sqlite-database-chat-repl", "wsl2-docker-gemma", "image-tagging-ai", "private-photo-archiver"]
+version: "2.0.0"
+---
+
+# Local Gemma 4 Offline Photo Cataloger (v2.0.0)
+
+### 🔍 Private Offline AI Photo Cataloging, Natural Language SQLite Querying, and EXIF Metadata Embedding using Google Gemma 4 (v2.0.0)
 
 A private, offline vision-language-driven photo cataloging pipeline. This application scans directory trees recursively, analyzes images in parallel, generates structured descriptive metadata, and optionally embeds descriptions natively back into the image file EXIF headers.
 
 It runs entirely offline on local hardware using Google's encoder-free **Gemma 4 12B IT** multimodal model inside a WSL2 Docker container with BitsAndBytes 4-bit quantization.
+
 
 > [!NOTE]
 > **Looking for a Cloud-Based Pipeline?**
@@ -21,6 +31,7 @@ Depending on your hardware capability, budget, and description requirements, you
 | **Speed** | Slower (limited by local GPU batch processing) | Extremely fast (processed in parallel by Vertex AI) |
 | **Description Detail**| Structured JSON summaries (tags & environment) | Comprehensive, detailed descriptions & narrative paragraphs |
 | **Data Privacy** | **Absolute** (all processing remains offline on-disk) | Images processed remotely via secure Google Cloud servers |
+| **Database Chat Agent** | **Yes** (Conversational SQL-translating REPL client included) | **No** (Output is structured files/EXIF only) |
 
 ---
 
@@ -213,10 +224,63 @@ Override default settings using the following runtime options:
 | `--batch-size` | `int` | `2` | Batch size for model evaluation. Tune down to `1` if you encounter CUDA OOM errors. |
 | `--max-workers` | `int` | `8` | Number of background CPU worker threads for fast image loading. |
 | `--output` | `str` | `"photo_descriptions.json"` | Path to save the cataloged descriptions database. |
+| `--db` | `str` | `"local/photo_catalog.db"` / env `OUTPUT_DATABASE_SQLITE` | Path to save the SQLite database catalog. Set to empty or None to disable. |
 | `--submitted-cache` | `str` | `"submitted_photos_cache.txt"` | Log file tracking already-evaluated photos. |
 | `--embed-exif` | Flag | `False` | Triggers background ExifTool execution to write description headers. |
 | `--file` | `str` | None | Processes a single target file directly, bypassing skip caches. |
 | `--force` | Flag | `False` | Forces re-evaluation of all target files, ignoring existing database records. |
+
+---
+
+## 💬 Interactive Database Chat REPL
+
+The Interactive Database Chat client provides a conversational command-line interface (`db_chat_repl.py`) to query your cataloged photo database using natural language (e.g., "Find 15 photos with Paris and a river", "Find photos of motorcycles in Paris", or "Show me 5 photos taken in the forest").
+
+It generates and runs SQL queries under the hood and outputs the results in a formatted markdown table or indexed list.
+
+> [!NOTE]
+> **Dual-Node Remote Architecture (Optional)**
+> The codebase supports connecting a secondary REPL client node or remote model server (configured via the `--remote` flag along with `--host` and `--port` parameters). This enables querying the database from a separate workstation or network node. This is a specialized setup and is completely optional.
+
+> [!WARNING]
+> **WSL2 Memory Constraints & Coexistence**
+> Using the REPL client to query the database *during active cataloging iterations* (i.e., while running `describe_photos.py` to index new batches) is **not recommended**. The local model server runs inside a WSL2 Docker container, and executing heavy pipeline processes alongside active chat querying can saturate host/WSL memory thresholds and trigger CUDA or container OOM crashes.
+
+### Quick Start
+To launch the database chat REPL:
+```bash
+# Local Mode (queries local WSL2 Docker server):
+.\run_db_chat_local.bat
+
+# Remote Mode (queries remote Ollama server by default):
+.\run_db_chat.bat
+```
+
+Alternatively, run the python script directly:
+```bash
+# Local Mode
+python local/db_chat_repl.py --db local/photo_catalog.db --prompt local/db_prompt.txt
+
+# Remote Mode
+python local/db_chat_repl.py --remote --host 127.0.0.1 --port 11434 --model gemma4-it-q4:latest
+```
+
+### Configuration & Parameterization
+The REPL client loads default parameters dynamically from environment variables and supports full command-line overrides (no hardcoded endpoints or paths):
+- **Database Path**: `--db` / env `OUTPUT_DATABASE_SQLITE` / default: `local/photo_catalog.db`
+- **Prompt Path**: `--prompt` / env `DB_PROMPT_PATH` / default: `local/db_prompt.txt`
+- **Local VLM URL**: `--local-url` / env `VLM_SERVER_URL` / default: `http://127.0.0.1:8000/analyze`
+- **Remote Ollama Parameters**:
+  - Model: `--model` / env `OLLAMA_MODEL` / default: `gemma4-it-q4:latest`
+  - Host: `--host` / env `OLLAMA_HOST` / default: `127.0.0.1`
+  - Port: `--port` / env `OLLAMA_PORT` / default: `11434`
+
+### Special Commands
+Within the REPL environment, you can use the following controls:
+*   `/clear` or `/reset`: Clears conversational history queue (which maintains up to a 20-message window).
+*   `open <index>` or `/open <index>`: Opens the photo corresponding to that bullet item index (e.g., `open 3`) in the host's default image viewer.
+*   `/paste`: Enters multiline input paste mode. Type `/end` on a separate line to finish and send your prompt.
+*   `exit` or `quit`: Exits the REPL.
 
 ---
 
@@ -235,25 +299,20 @@ This script reads the `.env` settings, normalizes file paths across operating sy
 
 ---
 
-## 🛠️ Lossless Video Frame Extractor
+## 🗄️ Database Migrations
 
-This repository includes a standalone utility inside the [utilities/](utilities/) folder that extracts individual video frames between specific timecodes as uncompressed `.bmp` files to preserve lossless clarity for VLM analysis.
+This release focuses strictly on direct SQLite database output and the DB Chat client interface. To keep the codebase lightweight and clean, utility scripts for importing/migrating legacy JSON catalogs are omitted from this core distribution. 
 
-To run it:
-```bash
-# Run from PowerShell / Command Prompt:
-.\utilities\run_extract_frames.bat
-```
-This utility will:
-1. Auto-detect video captures in common folders or prompt you for the target file path.
-2. Ask for start and end timecodes (supports formats like `HH:MM:SS`, `MM:SS`, or raw seconds).
-3. Export every frame in the range as a high-fidelity lossless `.bmp` image inside your target folder.
+If you have existing photo databases saved in `photo_descriptions.json` format, you can easily write a simple Python script to import that JSON array and upsert its entries into the `photos` SQLite table. The `photos` table schema details are documented in `local/db_prompt.txt`.
 
----
 
 ## 🧪 Testing
 
 Run the mock-based unit tests to verify script logic:
 ```bash
+# Test the image describer pipeline logic
 python -m unittest local/tests/test_describe_photos.py
+
+# Test the DB Chat REPL client logic
+python -m unittest local/tests/test_db_chat_repl.py
 ```
