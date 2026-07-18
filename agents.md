@@ -277,8 +277,13 @@ The database `photo_catalog.db` holds a table `photos` structured as follows:
   7. Created a dedicated `sh/` directory containing equivalent Bash shell scripts for Linux/Ubuntu users, documenting in `README.md` that they can be run directly on native Ubuntu and other Linux clones, or under Windows WSL2 (via `wsl -u {user}`). Standardized the batch/shell scripts names to `run_cataloger.bat` and `sh/run_cataloger.sh` to match development workflows.
   8. Handled unrecognized CLI arguments (`--db` and `--prompt`) in `db_chat_repl.py` invocation within `.sh` and `.bat` scripts by passing them as environment variables (`DB_PATH` and `PROMPT_FILE`) instead, preventing CLI parser crashes. Added environment-specific customization notes for `/open` in documentation.
 
+### Session 2026-07-18 (Part 3): Full Path Sanitization and Test Suite Alignment
 
-
-
-
-
+* **Failure**: Example prompts (`db_prompt.txt`), system correction files (`sql_fix_prompt.txt`), local helper scripts (`db_chat_repl.py`), and unittest files contained hardcoded personal paths (like `H:\Wan_project` or `D:\Users\steven`) and local system user names (`steven`).
+* **Root Cause**: Codebase paths and prompts historically carried hardcoded developer environmental configurations, which leaked personal details and broke unit tests when run on alternative environments (like macOS client setups).
+* **Resolution**:
+  1. Replaced all occurrences of `D:\Users\steven` and `H:\` paths in `db_prompt.txt`, `sql_fix_prompt.txt`, and nested helper modules with dynamic environment variables or generic `C:\Users\username` placeholders.
+  2. Simplified the `agy` binary check in `db_chat_repl.py` to rely on dynamic home directory resolution (`os.path.expanduser("~/.local/bin/agy")`), removing hardcoded `/home/steven/` and `/home/workbench/` checks.
+  3. Aligned mock test paths and command assertions in `tests/test_describe_photos.py` and `tests/test_db_chat_repl.py` with generic placeholders.
+  4. Patched `PLAYLIST_DIR` inside the test files and mock `os.path.exists` to prevent the direct SQL tests from raising a `StopIteration` crash during the fallback query correction loop.
+  5. Verified that all 25 unit tests compiled and passed successfully on macOS.
