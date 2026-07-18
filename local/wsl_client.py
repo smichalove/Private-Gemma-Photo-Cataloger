@@ -23,6 +23,8 @@ Execution Modes:
 """
 
 import os
+import sys
+import platform
 import subprocess
 import base64
 import atexit
@@ -291,7 +293,7 @@ def is_server_alive() -> bool:
 
 
 def is_uvicorn_running() -> bool:
-    """Checks if the uvicorn process is already running inside the Docker container.
+    """Checks if the uvicorn process is already running.
 
     Args:
         None
@@ -299,28 +301,40 @@ def is_uvicorn_running() -> bool:
     Returns:
         True if the uvicorn process is active, False otherwise.
     """
-    try:
-        # Check if any processes matching 'uvicorn' are active inside the container.
-        # This will return a non-zero exit code if no matching processes are found.
-        # Added a 10-second timeout to prevent indefinite hangs if the VM freezes.
-        result = subprocess.run(
-            ["wsl", "-u", "workbench", "docker", "exec", CONTAINER_NAME, "pgrep", "-f", "uvicorn"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            check=True,
-            timeout=10.0
-        )
-        return len(result.stdout.strip()) > 0
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return False
+    if platform.system().lower() == "windows":
+        try:
+            # Check if any processes matching 'uvicorn' are active inside the container.
+            result = subprocess.run(
+                ["wsl", "-u", "workbench", "docker", "exec", CONTAINER_NAME, "pgrep", "-f", "uvicorn"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+                timeout=10.0
+            )
+            return len(result.stdout.strip()) > 0
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            return False
+    else:
+        # Native Linux (Ubuntu) or macOS host: check local processes directly
+        try:
+            result = subprocess.run(
+                ["pgrep", "-f", "uvicorn"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+                timeout=5.0
+            )
+            return len(result.stdout.strip()) > 0
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            return False
 
 
 def start_wsl_server() -> bool:
-    """Spins up the WSL2 Docker container and starts the FastAPI VLM server inside it.
+    """Spins up the model server and starts the FastAPI VLM server.
 
     If the server is already active and responsive to health checks, skips all startup
-    checks and returns True immediately. Otherwise, ensures the Docker container is started,
-    verifies workspace mounts, launches the FastAPI server using uvicorn if not already active,
+    checks and returns True immediately. Otherwise, ensures the model server is started,
+    launches the FastAPI server using uvicorn if not already active,
     and polls the server health endpoint until the weights are fully loaded.
 
     Args:
@@ -332,83 +346,75 @@ def start_wsl_server() -> bool:
     Raises:
         None
     """
-    # 0. Start the background WSL keep-alive process to prevent auto-shutdown
-    start_keep_alive()
+    # 0. Start the background WSL keep-alive process to prevent auto-shutdown (Windows only)
+    if platform.system().lower() == "windows":
+        start_keep_alive()
 
     # 1. Quick exit if the model server is already up, healthy, and listening.
-    # This avoids resetting connection state or reloading model weights when a server is ready.
     if is_server_alive():
-        logger.info("WSL2 model server is already running and responsive. Bypassing startup procedure.")
+        logger.info("VLM model server is already running and responsive. Bypassing startup procedure.")
         return True
 
-    # 1.5. If Uvicorn is already running inside the container (likely still loading weights),
-    # wait for it to finish loading instead of restarting the container.
+    # 1.5. If Uvicorn is already running (likely still loading weights), wait
     if is_uvicorn_running():
-        logger.info("Uvicorn is already running inside the container (likely still loading weights).")
+        logger.info("Uvicorn is already running (likely still loading weights).")
         logger.info("Waiting for Gemma 4 VLM weights to load into VRAM...")
         max_attempts = 150
         for attempt in range(1, max_attempts + 1):
             if is_server_alive():
-                logger.info("WSL2 Model Server is active and listening on port 8000!")
+                logger.info("Model Server is active and listening on port 8000!")
                 return True
             if not is_uvicorn_running():
-                logger.warning("Uvicorn process stopped running while waiting. Proceeding to restart container...")
+                logger.warning("Uvicorn process stopped running while waiting. Proceeding to restart...")
                 break
             time.sleep(3.0)
             if attempt % 5 == 0:
                 logger.info(f"Still waiting for model loading... (Attempt {attempt}/{max_attempts})")
         else:
-            logger.error("Timeout: Existing WSL2 model server failed to become responsive within 7.5 minutes.")
+            logger.error("Timeout: Model server failed to become responsive within 7.5 minutes.")
             return False
 
-    logger.info("Starting WSL2 model server...")
+    logger.info("Starting VLM model server...")
     
-    # 1. Restart the Docker container cleanly.
-    # Using 'docker restart' ensures any fragmented or leaked GPU memory is fully released,
-    # preventing silent VRAM Out-of-Memory (OOM) crashes on large high-res batch runs.
-    # Added robust subprocess timeouts to prevent freezing if WSL itself deadlocks.
-    try:
-        logger.info(f"Cleanly restarting container '{CONTAINER_NAME}' to reset VRAM state...")
-        subprocess.run(["wsl", "-u", "workbench", "docker", "restart", CONTAINER_NAME], 
-                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=45.0)
-        
-        # Wait for container volume mounts to be fully attached (up to 10 seconds)
-        mount_ready = False
-        for _ in range(10):
-            try:
-                res = subprocess.run(
-                    ["wsl", "-u", "workbench", "docker", "exec", CONTAINER_NAME, "test", "-d", "/workspace/gemma_cataloger"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    timeout=5.0
-                )
-                if res.returncode == 0:
-                    mount_ready = True
-                    break
-            except subprocess.TimeoutExpired:
-                pass
-            time.sleep(1.0)
+    if platform.system().lower() == "windows":
+        # Windows flow: WSL2 + Docker container
+        try:
+            logger.info(f"Cleanly restarting container '{CONTAINER_NAME}' to reset VRAM state...")
+            subprocess.run(["wsl", "-u", "workbench", "docker", "restart", CONTAINER_NAME], 
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=45.0)
             
-        if not mount_ready:
-            logger.error("Timeout: /workspace/gemma_cataloger mount was not mounted in time inside container.")
+            # Wait for container volume mounts to be fully attached (up to 10 seconds)
+            mount_ready = False
+            for _ in range(10):
+                try:
+                    res = subprocess.run(
+                        ["wsl", "-u", "workbench", "docker", "exec", CONTAINER_NAME, "test", "-d", "/workspace/gemma_cataloger"],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=5.0
+                    )
+                    if res.returncode == 0:
+                        mount_ready = True
+                        break
+                except subprocess.TimeoutExpired:
+                    pass
+                time.sleep(1.0)
+                
+            if not mount_ready:
+                logger.error("Timeout: /workspace/gemma_cataloger mount was not mounted in time inside container.")
+                return False
+                
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            err_msg = ""
+            if isinstance(e, subprocess.CalledProcessError):
+                err_msg = e.stderr.decode().strip() if e.stderr else str(e)
+            else:
+                err_msg = f"Command timed out after {e.timeout}s"
+            logger.error(f"Failed to restart docker container {CONTAINER_NAME}: {err_msg}")
             return False
-            
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
-        err_msg = ""
-        if isinstance(e, subprocess.CalledProcessError):
-            err_msg = e.stderr.decode().strip() if e.stderr else str(e)
-        else:
-            err_msg = f"Command timed out after {e.timeout}s"
-        logger.error(f"Failed to restart docker container {CONTAINER_NAME}: {err_msg}")
-        return False
 
-    # 2. Check if uvicorn is already running. If not, launch it.
-    if is_uvicorn_running():
-        logger.info("Uvicorn is already running inside the container. Bypassing launch command.")
-    else:
-        # Start uvicorn server in the background inside the container
-        # We use -d on docker exec to launch it detached/daemonized
-        cmd: List[str] = [
+        # Launch detached inside container
+        cmd = [
             "wsl", "-u", "workbench", "docker", "exec", "-d", "-w", "/workspace",
             "-e", "TQDM_DISABLE=1",
             "-e", "HF_HUB_DISABLE_PROGRESS_BARS=1",
@@ -423,29 +429,52 @@ def start_wsl_server() -> bool:
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
             logger.error(f"Failed to launch uvicorn inside container: {e}")
             return False
+    else:
+        # Native Linux (Ubuntu) or macOS flow
+        local_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(local_dir)
+        log_path = os.path.join(local_dir, "uvicorn_stdout.log")
+        try:
+            logger.info("Launching FastAPI server natively on Linux/macOS...")
+            log_file = open(log_path, "a", encoding="utf-8")
+            env = os.environ.copy()
+            env["PYTHONPATH"] = local_dir + (os.pathsep + env.get("PYTHONPATH", "") if env.get("PYTHONPATH") else "")
+            
+            # Start process natively using Popen
+            subprocess.Popen(
+                [sys.executable, "-m", "uvicorn", "wsl_server:app", "--host", "0.0.0.0", "--port", "8000"],
+                cwd=project_root,
+                env=env,
+                stdout=log_file,
+                stderr=subprocess.STDOUT
+            )
+        except Exception as e:
+            logger.error(f"Failed to launch uvicorn natively: {e}")
+            return False
 
-    # 3. Poll the server until it finishes loading the weights and responds to health checks
-    # Model loading typically takes 30-90 seconds. We'll poll every 3 seconds for up to 450 seconds.
+    # 3. Poll the server until it finishes loading the weights
     max_attempts = 150
     logger.info("Waiting for Gemma 4 VLM weights to load into VRAM (this can take 1-2 minutes)...")
     for attempt in range(1, max_attempts + 1):
         if is_server_alive():
-            logger.info("WSL2 Model Server is active and listening on port 8000!")
+            logger.info("Model Server is active and listening on port 8000!")
             return True
             
-        # Early crash detection: check if uvicorn process died
+        # Early crash detection
         if not is_uvicorn_running():
             logger.error("VLM Server (uvicorn) process has crashed or stopped running!")
-            log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uvicorn.log")
+            log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uvicorn_stdout.log")
+            if not os.path.exists(log_path):
+                log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uvicorn.log")
             if os.path.exists(log_path):
-                logger.error("==================== LAST 15 LINES OF UVICORN.LOG ====================")
+                logger.error(f"==================== LAST 15 LINES OF {os.path.basename(log_path).upper()} ====================")
                 try:
                     with open(log_path, "r", encoding="utf-8") as f:
                         lines = f.readlines()
                         for line in lines[-15:]:
                             logger.error(line.rstrip())
                 except Exception as e:
-                    logger.error(f"Failed to read uvicorn.log: {e}")
+                    logger.error(f"Failed to read log: {e}")
                 logger.error("======================================================================")
             return False
             
@@ -453,7 +482,7 @@ def start_wsl_server() -> bool:
         if attempt % 5 == 0:
             logger.info(f"Still waiting for model loading... (Attempt {attempt}/{max_attempts})")
 
-    logger.error("Timeout: WSL2 model server failed to start within 7.5 minutes.")
+    logger.error("Timeout: VLM model server failed to start within 7.5 minutes.")
     return False
 
 
@@ -471,22 +500,24 @@ def wait_for_server_startup(max_attempts: int = 120, sleep_interval: float = 2.0
     print("Polling server health endpoint...", flush=True)
     for attempt in range(1, max_attempts + 1):
         if is_server_alive():
-            print("\n[SUCCESS] WSL2 VLM Model Server is active and listening on port 8000!", flush=True)
+            print("\n[SUCCESS] VLM Model Server is active and listening on port 8000!", flush=True)
             return True
         
         # Check if the process has died
         if not is_uvicorn_running():
             print("\n[ERROR] VLM Server (uvicorn) process has crashed or stopped running!", flush=True)
-            log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uvicorn.log")
+            log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uvicorn_stdout.log")
+            if not os.path.exists(log_path):
+                log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uvicorn.log")
             if os.path.exists(log_path):
-                print("==================== LAST 15 LINES OF UVICORN.LOG ====================", flush=True)
+                print(f"==================== LAST 15 LINES OF {os.path.basename(log_path).upper()} ====================", flush=True)
                 try:
                     with open(log_path, "r", encoding="utf-8") as f:
                         lines = f.readlines()
                         for line in lines[-15:]:
                             print(line.rstrip(), flush=True)
                 except Exception as e:
-                    print(f"Failed to read uvicorn.log: {e}", flush=True)
+                    print(f"Failed to read log: {e}", flush=True)
                 print("======================================================================", flush=True)
             return False
             
@@ -499,7 +530,7 @@ def wait_for_server_startup(max_attempts: int = 120, sleep_interval: float = 2.0
 
 
 def stop_wsl_server() -> None:
-    """Stops the Docker container inside WSL2, immediately releasing all GPU VRAM and memory.
+    """Stops the VLM model server, immediately releasing all GPU VRAM and memory.
 
     Args:
         None
@@ -507,20 +538,29 @@ def stop_wsl_server() -> None:
     Returns:
         None
     """
-    # Force termination of the keep-alive process since we are explicitly stopping the server
-    global _should_terminate_keep_alive
-    _should_terminate_keep_alive = True
-    stop_keep_alive()
+    if platform.system().lower() == "windows":
+        # Force termination of the keep-alive process
+        global _should_terminate_keep_alive
+        _should_terminate_keep_alive = True
+        stop_keep_alive()
 
-    logger.info("Shutting down WSL2 model server container...")
-    try:
-        # Stopping the container immediately frees up all GPU VRAM and resources
-        # Added a 30-second timeout to prevent hangs.
-        subprocess.run(["wsl", "-u", "workbench", "docker", "stop", CONTAINER_NAME], 
-                       check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30.0)
-        logger.info("WSL2 model server container stopped successfully. VRAM released.")
-    except Exception as e:
-        logger.warning(f"Warning: Failed to stop docker container {CONTAINER_NAME}: {e}")
+        logger.info("Shutting down WSL2 model server container...")
+        try:
+            subprocess.run(["wsl", "-u", "workbench", "docker", "stop", CONTAINER_NAME], 
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=30.0)
+            logger.info("WSL2 model server container stopped successfully. VRAM released.")
+        except Exception as e:
+            logger.warning(f"Warning: Failed to stop docker container {CONTAINER_NAME}: {e}")
+    else:
+        logger.info("Shutting down native VLM model server...")
+        try:
+            if platform.system().lower() == "linux":
+                subprocess.run(["pkill", "-f", "uvicorn"], check=True)
+            else:
+                subprocess.run(["pkill", "-f", "uvicorn"])
+            logger.info("Native VLM model server processes terminated successfully.")
+        except Exception as e:
+            logger.warning(f"Warning: Failed to terminate native uvicorn processes: {e}")
 
 
 def query_vlm_server(image_paths: List[str], prompt_text: str) -> List[str]:

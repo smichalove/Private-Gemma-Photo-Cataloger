@@ -11,7 +11,7 @@ version: "2.1.0"
 
 A private, offline vision-language-driven photo cataloging pipeline. This application scans directory trees recursively, analyzes images in parallel, generates structured descriptive metadata, and optionally embeds descriptions natively back into the image file EXIF headers.
 
-It runs entirely offline on local hardware using Google's encoder-free **Gemma 4 12B IT** multimodal model inside a WSL2 Docker container with BitsAndBytes 4-bit quantization, distributed across a high-speed local network compute fabric.
+It runs entirely offline on local hardware using Google's encoder-free **Gemma 4 12B IT** multimodal model running natively on a GPU-accelerated Ubuntu (or WSL2) environment with BitsAndBytes 4-bit quantization, distributed across a high-speed local network compute fabric. WSL2 Docker container virtualization on Windows has been deprecated in favor of a pure native Windows-client/Ubuntu-server architecture.
 
 > [!WARNING]
 > **SQLite Backend Deprecation**:
@@ -102,60 +102,33 @@ You must install **ExifTool** locally on the host machine:
     ```
 
 > [!NOTE]
-> **Host vs. Server Dependency Isolation**
-> The host machine only handles lightweight coordination, file crawling, and metadata writing. Heavy dependencies (such as `torch`, `transformers`, and `bitsandbytes`) are isolated inside the WSL2 Docker container to keep the host environment clean and prevent PyTorch version conflicts.
+> **Host vs. Server Architecture**
+> The host machine (Windows) handles lightweight coordination, file crawling, database writes, and metadata EXIF embedding. Heavy model dependencies (such as `torch`, `transformers`, and `bitsandbytes`) are completely offloaded to the native Ubuntu VLM server to optimize resources.
 
-### 3. GPU Hardware & Docker Container Setup (WSL2)
+### 3. VLM Server Installation & Setup (Native Ubuntu)
 
-*   **Hardware Requirement**: An NVIDIA GPU with at least **16GB of VRAM** (e.g., RTX 5080, RTX 4080, or Ampere/Turing equivalents).
-*   Ensure **WSL2** and **Docker Desktop** (with the WSL2 backend enabled) are installed on your Windows host.
-    - If you need to set up or configure WSL2, follow the official [Microsoft WSL2 Installation Guide](https://learn.microsoft.com/en-us/windows/wsl/install) to provision your subsystem.
-*   **Docker User Permissions inside WSL2**: The WSL user account (configured via `WSL_USER` in `.env`) must be allowed to run Docker commands without prefixing `sudo`:
-    - **Option A (Recommended)**: Add your WSL2 Linux user to the `docker` group:
-      ```bash
-      sudo usermod -aG docker your-wsl-username
-      ```
-      *(Reopen your terminal or run `newgrp docker` inside WSL for the changes to apply).*
-    - **Option B (Direct Root)**: Set `WSL_USER=root` in your local `.env` file to execute all background controls as the root account directly.
+*   **VLM Host Hardware**: An NVIDIA GPU with at least **16GB of VRAM** (e.g., RTX 5080, RTX 4080, or Ampere equivalents) installed in a workstation running a pure native Ubuntu installation.
+*   **Deprecation Note**: Docker and WSL2 container virtualization on Windows are fully deprecated. Running the VLM natively on physical Ubuntu hardware eliminates VM translation layers, network latency, and memory allocation bottlenecks.
 
-> [!IMPORTANT]
-> **Performance Benefits of WSL2 Containerization**
-> Running the Gemma 4 VLM server inside a WSL2 Docker container provides major performance advantages:
-> 1. **Zero-overhead GPU access**: Leveraging the NVIDIA Container Toolkit allows the container to run directly on the host GPU at native speeds.
-> 2. **Accelerated model load times**: Quantized 4-bit weights load and compile significantly faster inside Linux's native filesystem and memory architectures compared to native Windows environments.
+#### Setting up the Server on Ubuntu:
+1. Clone the project repository (or mount it via SMB/network shares) on your Ubuntu host.
+2. Install Python dependencies:
+   ```bash
+   pip install -r local/requirements_server.txt
+   ```
+3. Start the FastAPI model server:
+   ```bash
+   python -m uvicorn local.wsl_server:app --host 0.0.0.0 --port 8000
+   ```
+   *Alternatively, the server can be started on the command line or managed via local process utilities.*
 
-Launch the model server container mapping port 8000 and mounting your code directory:
-```bash
-docker run -d --name trt_llm_build \
-  --gpus all \
-  -p 8000:8000 \
-  -v /absolute/path/to/project:/workspace \
-  -v /absolute/path/to/models:/workspace/models \
-  --restart unless-stopped \
-  nvcr.io/nvidia/tensorrt-llm/release:1.2.0
-```
-
-Install the VLM server-specific dependencies inside the running container:
-```bash
-docker exec -it trt_llm_build pip install -r /workspace/local/requirements_server.txt
-```
-
-To start the model server and pre-load VLM weights in advance, run the provided start script:
-```bash
-# Run from PowerShell / Command Prompt:
-.\start_server.bat
-```
-
-To stop the model server and release all GPU VRAM when you are finished cataloging, run the provided stop script:
-```bash
-# Run from PowerShell / Command Prompt:
-.\stop_server.bat
-```
+To start or stop the model server locally via scripts (on Windows orchestrators, checking for remote VLM status):
+- Run `.\start_server.bat` to ping or boot the server.
+- Run `.\stop_server.bat` to release GPU VRAM resources.
 
 > [!TIP]
 > **Non-Blackwell Platform Customization**
-> The server initialization script ([wsl_client.py](local/wsl_client.py)) defaults to parameters optimized for Blackwell GPUs (like `BNB_CUDA_VERSION=130` on line 124).
-> If you are running on an older generation (e.g., Ada Lovelace RTX 40-series, Ampere RTX 30-series, or older CUDA setups), you can edit the `BNB_CUDA_VERSION` environment flag inside [wsl_client.py](local/wsl_client.py#L124) to match your GPU's CUDA runtime version (e.g., `121` or `118`).
+> The server initialization script defaults to parameters optimized for Blackwell GPUs (`BNB_CUDA_VERSION=130`). If you are running on an older generation (e.g., Ada Lovelace RTX 40-series, Ampere RTX 30-series), you can customize the `BNB_CUDA_VERSION` environment flag inside [wsl_client.py](local/wsl_client.py) (e.g., to `121` or `118`) to match your GPU's CUDA runtime version.
 
 ### 4. LAN Compute Fabric Database Initialization
 
@@ -241,13 +214,13 @@ It generates and runs SQL queries under the hood and outputs the results in a fo
 > The codebase supports connecting a secondary REPL client node or remote model server (configured via the `--remote` flag along with `--host` and `--port` parameters). This enables querying the database from a separate workstation or network node. This is a specialized setup and is completely optional.
 
 > [!WARNING]
-> **WSL2 Memory Constraints & Coexistence**
-> Using the REPL client to query the database *during active cataloging iterations* (i.e., while running `describe_photos.py` to index new batches) is **not recommended**. The local model server runs inside a WSL2 Docker container, and executing heavy pipeline processes alongside active chat querying can saturate host/WSL memory thresholds and trigger CUDA or container OOM crashes.
+> **Resource Limits & Coexistence**
+> Using the REPL client to query the database *during active cataloging iterations* (i.e., while running `describe_photos.py` to index new batches) is **not recommended**. Executing heavy pipeline processes alongside active VLM querying can saturate GPU memory thresholds and trigger CUDA Out-of-Memory (OOM) crashes.
 
 ### Quick Start
 To launch the database chat REPL:
 ```bash
-# Local Mode (queries local WSL2 Docker server):
+# Local Mode (queries local VLM server running on localhost or loopback):
 .\run_db_chat_local.bat
 
 # Remote Mode (queries remote Ollama server by default):

@@ -1,6 +1,6 @@
 # Release Notes: Local Gemma Photo Cataloger v2.1.0 (Major Release)
 
-This major release (**Version 2.1.0**) introduces the **Modular Compute Fabric** framework, enabling high-performance parallel image indexing across distributed local network nodes. Additionally, this release implements full support for the **PostgreSQL** database backend, transitions tests to the root project namespace, and officially deprecates the legacy SQLite backend.
+This major release (**Version 2.1.0**) introduces the **Modular Compute Fabric** framework, enabling high-performance parallel image indexing across distributed local network nodes. Additionally, this release implements full support for the **PostgreSQL** database backend, transitions tests to the root project namespace, deprecates the legacy SQLite backend, and officially deprecates Windows WSL2/Docker VLM hosting in favor of a pure Windows-client / native Ubuntu-server architecture.
 
 ---
 
@@ -28,6 +28,14 @@ This major release (**Version 2.1.0**) introduces the **Modular Compute Fabric**
 ### 5. Testing Namespace Alignment
 *   **Root `tests/` Directory**: Test suites (`test_describe_photos.py` and `test_db_chat_repl.py`) have been moved from the legacy `local/tests` directory to the project root namespace (`tests/`) to isolate test executions.
 *   **Sanitized Test Suites**: Sanitized IP and path string comparisons inside test assertions.
+
+### 6. WSL2 & Docker VLM Hosting Deprecation (Major Architectural Shift)
+*   **WSL2 & Docker Deprecation**: Local WSL2 and Docker container virtualization on Windows are fully deprecated for VLM hosting.
+*   **Transition to Pure Windows/Ubuntu Architecture**: The VLM model server is transitioned to run natively on a GPU-accelerated pure Ubuntu host/workstation, while the lightweight orchestrator/client continues to run on Windows.
+*   **Why This Shift Was Made (Performance & VRAM Benefits)**:
+    *   *Zero-Overhead GPU Access*: Swapping the virtualized Windows Docker container for native Ubuntu hosting eliminates virtualized GPU driver layers, container network layers, and VM scheduling translation delays, yielding raw, native CUDA performance.
+    *   *Robust Memory & VRAM Management*: Native Ubuntu hosts manage VRAM allocations, device memory scheduling, and PyTorch garbage collection far more robustly than WSL2, eliminating context-switching freezes, driver deadlocks, and VRAM fragmentation OOM crashes under long-running, concurrent photo indexing jobs.
+    *   *Native Disk I/O Performance*: Large quantized model weights load directly from the physical NVMe drive to the GPU VRAM at native bus speeds, bypassing the performance overhead of WSL2 folder mounts.
 
 ---
 

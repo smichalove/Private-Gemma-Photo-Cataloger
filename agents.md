@@ -131,11 +131,18 @@ This section outlines the logical layout and interactions of the offline photo c
 ### Architectural Overview
 The system is built on a **decoupled architecture** that splits host orchestration from VLM inference to optimize execution speed and resource management:
 - **Host (Windows)**: Handles photo directory crawling, deduplication checking, concurrent base64 image pre-loading, database cataloging (JSON file & SQLite DB), and EXIF metadata writing.
-- **VLM Server (WSL2 Docker)**: Hosts Google's **Gemma 4 12B IT** Vision-Language Model in a GPU-accelerated container running FastAPI/Uvicorn. By containerizing inside WSL2, the server leverages native Linux CUDA performance and compiling frameworks.
+- **VLM Server (Ubuntu)**: Hosts Google's **Gemma 4 12B IT** Vision-Language Model natively inside a GPU-accelerated pure Ubuntu environment running FastAPI/Uvicorn, leveraging native Linux CUDA performance.
+  > [!IMPORTANT]
+  > **WSL & Docker Deprecation Note**: Local WSL2 and Docker container virtualization on Windows are fully deprecated for VLM hosting. The system is designed as a pure Windows (orchestrator client) and Ubuntu (native model server) setup, running directly on physical hardware.
+  >
+  > **Performance & VRAM Management Benefits**:
+  > 1. **Zero-Overhead GPU Access**: Offloading the VLM server to a native Ubuntu host running directly on physical hardware avoids virtualized GPU drivers, VM translation delays, and container virtualization overhead, providing raw, zero-overhead CUDA/VRAM performance.
+  > 2. **VRAM Saturation & Memory Safety**: Native Linux environments handle VRAM allocation and garbage collection (gc) far more robustly than WSL2, preventing memory leaks, context-switching freezes, and VRAM fragmentation crashes under long-running batch indexing tasks.
+  > 3. **Native Linux Filesystem Speeds**: Quantized weights (e.g. 4-bit NF4/INT4 via `torchao` or `ollama`) load directly from physical NVMe drives to VRAM at native bus speeds, bypassing slow WSL mounts.
 
 ```mermaid
 graph TD
-    subgraph Windows Host
+    subgraph Orchestrator Host
         Orch[describe_photos.py]
         SQLite[(photo_catalog.db)]
         JSON[(photo_descriptions.json)]
@@ -143,7 +150,7 @@ graph TD
         REPL[db_chat_repl.py]
     end
 
-    subgraph WSL2 Docker Container
+    subgraph Ubuntu / WSL2 Model Host
         FastAPI[wsl_server.py]
         Model[Gemma 4 12B IT VLM]
     end
@@ -174,19 +181,19 @@ graph TD
      - Optionally submits ExifTool tasks to a single-threaded background queue to embed description strings back into the images.
 
 2. [wsl_client.py](file:///h:/photo_catloger_decoupled_pub/local/wsl_client.py)
-   - **Role**: Coordinates host-to-WSL2 operations, managing the Docker container lifecycle and server HTTP communications.
+   - **Role**: Coordinates host-to-WSL2/Ubuntu operations, managing the model server process lifecycle and server HTTP communications.
    - **Core Flow**:
-     - Formulates command structures prefixing `wsl -u <user>` to execute instructions inside WSL2 Linux.
-     - Checks if the uvicorn process is active; if not, launches the server container `trt_llm_build` and starts FastAPI.
-     - Validates filesystem mount paths (checking `/workspace` directory) before starting the server process.
+     - Detects the host platform (Windows vs. native Linux/macOS).
+     - On Windows, uses WSL/Docker commands to restart and control the container. On Linux/macOS, starts `uvicorn` natively in the background and controls it via local process signals.
+     - Checks if the uvicorn process is active; if not, launches it.
      - Polls `/docs` to wait for model weights loading (which can take up to 7.5 minutes).
      - Dispatches batched base64 image strings and prompt text via POST request.
 
 3. [wsl_server.py](file:///h:/photo_catloger_decoupled_pub/local/wsl_server.py)
-   - **Role**: FastAPI backend running in WSL2 container representing the offline VLM inference engine.
+   - **Role**: FastAPI backend running natively on Ubuntu/Linux representing the offline VLM inference engine.
    - **Core Flow**:
      - Applies monkey-patch `patch_gemma4_unified` to patch `Gemma4UnifiedVisionEmbedder.forward` dynamically to bypass a known BitsAndBytes 4-bit LayerNorm casting bug.
-     - Loads pre-compiled 4-bit quantized weights if available on disk (`/workspace/models/gemma-4-12b-it-quantized-4bit`). Otherwise compiles the base model on-the-fly and saves the quantized checkpoint.
+     - Loads pre-compiled 4-bit quantized weights if available on disk. Otherwise compiles the base model on-the-fly and saves the quantized checkpoint.
      - Serves `/describe` POST endpoint, converting base64 arrays back into PIL images, preparing prompt templates, and appending a prefilled JSON tag to enforce structured JSON block generation.
 
 4. [db_chat_repl.py](file:///h:/photo_catloger_decoupled_pub/local/db_chat_repl.py)
@@ -237,10 +244,10 @@ The database `photo_catalog.db` holds a table `photos` structured as follows:
 ## 9. Critical Edge Cases & Development Precautions
 
 - **Windows vs. Linux Paths**: When importing JSON data batches into ExifTool, path keys ("SourceFile") must use forward-slash separators (e.g. `C:/Photos/image.jpg`) even on Windows, as backslashes will prevent ExifTool from mapping the imported JSON to the physical disk files.
-- **Subprocess Argument Lists**: In `wsl_client.py` and `embed_metadata.py`, commands run via `subprocess.run` must be passed as lists (e.g. `["wsl", "docker", ...]`) instead of plain strings with `shell=True` to avoid argument tokenization/escaping errors.
-- **WSL2 Resource Limits**: Executing indexing runs and database queries simultaneously can overwhelm GPU VRAM/RAM, triggering CUDA OOMs or container crashes. Avoid running active cataloging and chat loops concurrently on the same GPU.
+- **Subprocess Argument Lists**: In `wsl_client.py` and `embed_metadata.py`, commands run via `subprocess.run` must be passed as lists (e.g. `["pgrep", ...]`) instead of plain strings with `shell=True` to avoid argument tokenization/escaping errors.
+- **WSL2 Resource Limits**: Executing indexing runs and database queries simultaneously can overwhelm GPU VRAM/RAM, triggering CUDA OOMs or process crashes. Avoid running active cataloging and chat loops concurrently on the same GPU.
 - **BitsAndBytes LayerNorm Casting**: Standard HuggingFace library implementations fail to cast LayerNorm weight matrices properly under 4-bit quantization, causing `Gemma4UnifiedVisionEmbedder` runtime errors. Ensure `patch_gemma4_unified` is always imported and run before initializing VLM weights on startup.
-- **Blackwell GPU Optimizations**: The model server launches inside the WSL2 Docker container with environment flag `BNB_CUDA_VERSION=130` (in `wsl_client.py`), which optimizes BitsAndBytes execution for Blackwell generation GPUs (like RTX 5080 / 5090). For non-Blackwell architectures (e.g. RTX 4080 Ada Lovelace, RTX 3080 Ampere, etc.), this environment variable should be edited/tuned to match the device's CUDA runtime version (e.g., `121` or `118`) to prevent runtime warning flags or performance drops.
+- **Blackwell GPU Optimizations**: The model server launches inside the WSL2/Ubuntu environment with environment flag `BNB_CUDA_VERSION=130` (in `wsl_client.py`), which optimizes BitsAndBytes execution for Blackwell generation GPUs (like RTX 5080 / 5090). For non-Blackwell architectures (e.g. RTX 4080 Ada Lovelace, RTX 3080 Ampere, etc.), this environment variable should be edited/tuned to match the device's CUDA runtime version (e.g., `121` or `118`) to prevent runtime warning flags or performance drops.
 
 
 ---
@@ -255,6 +262,19 @@ The database `photo_catalog.db` holds a table `photos` structured as follows:
   1. Configured the workspace-level `.env` file to set `PYTHONPATH=local`.
   2. Created `.vscode/settings.json` specifying `python.analysis.extraPaths` and `python.autoComplete.extraPaths` for `./local` to natively instruct editors to resolve modules within that directory.
   3. Ran a full workspace compilation check (`python3 -m compileall -f .`) to ensure syntax compatibility across all modules.
+
+### Session 2026-07-18 (Part 2): Deprecation of Windows WSL/Docker and Integration of Native Ubuntu VLM Host
+
+* **Failure**: The codebase was hardcoded to execute server control commands via `wsl -u workbench docker exec` etc. When running on native Linux (Ubuntu) or macOS, this raised unhandled `FileNotFoundError` exceptions because the `wsl` command does not exist.
+* **Root Cause**: The project architecture was originally structured around Windows + WSL2 + Docker container virtualization. However, Docker on Windows has been deprecated, and VLM model hosting is transitioned to a native Ubuntu/Linux environment, making the WSL/Docker wrappers obsolete.
+* **Resolution**:
+  1. Updated `wsl_client.py` to dynamically detect the OS platform at runtime using the `platform` module.
+  2. Bypassed WSL and Docker commands when running on non-Windows platforms (Linux/macOS), calling local commands like `pgrep` and `pkill` directly on the host.
+  3. Integrated a native background execution flow using `subprocess.Popen` to launch the local `uvicorn` FastAPI server directly when running on native Linux.
+  4. Updated documentation in `agents.md` and `README.md` to formally deprecate WSL/Docker containerization and explain the pure Windows-client/Ubuntu-server native setup.
+  5. Documented performance and VRAM management benefits (zero-overhead GPU access, filesystem speeds, and memory safety) of native Ubuntu hosting in the project's documentation.
+
+
 
 
 
