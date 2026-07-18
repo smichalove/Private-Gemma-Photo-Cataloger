@@ -26,3 +26,6 @@ batch_files_*.txt
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Local credentials / secrets
+auth/
