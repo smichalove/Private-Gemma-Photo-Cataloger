@@ -274,6 +274,8 @@ The database `photo_catalog.db` holds a table `photos` structured as follows:
   4. Updated documentation in `agents.md` and `README.md` to formally deprecate WSL/Docker containerization and explain the pure Windows-client/Ubuntu-server native setup.
   5. Documented performance and VRAM management benefits (zero-overhead GPU access, filesystem speeds, and memory safety) of native Ubuntu hosting in the project's documentation.
   6. Added the `/fabric` and `/nodes` commands to the help instructions of `db_chat_repl.py` and updated `agents.md` to improve feature discoverability.
+  7. Created a dedicated `sh/` directory containing equivalent Bash shell scripts for Linux/Ubuntu users, documenting in `README.md` that they can be run directly on native Ubuntu and other Linux clones, or under Windows WSL2 (via `wsl -u {user}`).
+
 
 
 

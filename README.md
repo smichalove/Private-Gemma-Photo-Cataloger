@@ -219,12 +219,27 @@ It generates and runs SQL queries under the hood and outputs the results in a fo
 
 ### Quick Start
 To launch the database chat REPL:
-```bash
+
+#### Windows Host (CMD / PowerShell):
+```cmd
 # Local Mode (queries local VLM server running on localhost or loopback):
 .\run_db_chat_local.bat
 
 # Remote Mode (queries remote Ollama server by default):
 .\run_db_chat.bat
+```
+
+#### Linux Host (Ubuntu / Ubuntu clones / WSL):
+*Note: These scripts can be run natively under Ubuntu and other Linux clones, or under Windows WSL2 (by running `wsl -u {your_user}`).*
+```bash
+# Make the shell scripts executable:
+chmod +x sh/*.sh
+
+# Local Mode (queries local VLM server):
+./sh/run_db_chat_local.sh
+
+# Remote Mode (queries remote server):
+./sh/run_db_chat.sh
 ```
 
 Alternatively, run the python script directly:
