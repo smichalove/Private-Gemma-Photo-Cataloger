@@ -6,7 +6,7 @@ We are using PostgreSQL as the database backend. Here is the schema:
 
 Table: photos
 - id: INTEGER (SERIAL PRIMARY KEY)
-- full_path: TEXT UNIQUE NOT NULL (The absolute path of the image on the filesystem, e.g. "D:\\Users\\steven\\Pictures\\image.jpg")
+- full_path: TEXT UNIQUE NOT NULL (The absolute path of the image on the filesystem, e.g. "C:\\Users\\username\\Pictures\\image.jpg")
 - rel_path: TEXT NOT NULL (The normalized relative path, e.g. "patreon/vi kołodko/image.jpg")
 - primary_subject: TEXT (Detailed visual description of the main subject)
 - environment: TEXT (Setting details: indoor/outdoor, background, lighting)

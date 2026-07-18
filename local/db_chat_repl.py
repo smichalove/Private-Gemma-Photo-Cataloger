@@ -652,10 +652,6 @@ def call_antigravity_agent(prompt: str) -> None:
     if not in_path:
         if os.path.exists(home_agy) and os.access(home_agy, os.X_OK):
             agy_path = home_agy
-        elif os.path.exists("/home/workbench/.local/bin/agy") and os.access("/home/workbench/.local/bin/agy", os.X_OK):
-            agy_path = "/home/workbench/.local/bin/agy"
-        elif os.path.exists("/home/steven/.local/bin/agy") and os.access("/home/steven/.local/bin/agy", os.X_OK):
-            agy_path = "/home/steven/.local/bin/agy"
 
     print(f"\n🤖 [Agent Mode] Delegating to Antigravity CLI: '{agy_path}'...")
     print(f"Task: \"{prompt}\"\n")

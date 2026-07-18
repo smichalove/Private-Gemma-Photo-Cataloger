@@ -228,10 +228,12 @@ class TestDBChatRepl(unittest.TestCase):
     @patch("db_chat_repl.get_total_photos_count")
     @patch("db_chat_repl.load_system_prompt")
     @patch("sqlite3.connect")
-    def test_run_repl_direct_sql(self, mock_connect: MagicMock, mock_load_prompt: MagicMock, mock_count: MagicMock, mock_input: MagicMock) -> None:
+    @patch("os.path.exists")
+    def test_run_repl_direct_sql(self, mock_exists: MagicMock, mock_connect: MagicMock, mock_load_prompt: MagicMock, mock_count: MagicMock, mock_input: MagicMock) -> None:
         """Tests that run_repl executes direct SQL input queries without using VLM.
 
         Args:
+            mock_exists: Mocked os.path.exists.
             mock_connect: Mocked sqlite3 connection.
             mock_load_prompt: Mocked load_system_prompt.
             mock_count: Mocked get_total_photos_count.
@@ -244,6 +246,7 @@ class TestDBChatRepl(unittest.TestCase):
         mock_input.side_effect = ["SELECT * FROM photos LIMIT 5", "exit"]
         mock_count.return_value = 100
         mock_load_prompt.return_value = "Mock system prompt"
+        mock_exists.return_value = True
 
         # Mock database connection and cursor
         mock_conn = MagicMock()
@@ -268,6 +271,7 @@ class TestDBChatRepl(unittest.TestCase):
             hints = typing.get_type_hints(func)
             self.assertTrue(len(hints) > 0, f"Function {func.__name__} has no type hints.")
 
+    @patch.dict("os.environ", {"PLAYLIST_DIR": r"C:\Users\username\Music\Playlists"})
     @patch("builtins.input")
     @patch("builtins.open", new_callable=mock_open)
     @patch("os.makedirs")
@@ -278,9 +282,9 @@ class TestDBChatRepl(unittest.TestCase):
         import db_chat_repl
         # Inject mock paths into last_query_paths
         db_chat_repl.last_query_paths = [
-            r"D:\Users\steven\Music\Track1.flac",
-            r"D:\Users\steven\Music\Track2.mp3",
-            r"D:\Users\steven\Pictures\Photo.jpg"  # Non-audio file
+            r"C:\Users\username\Music\Track1.flac",
+            r"C:\Users\username\Music\Track2.mp3",
+            r"C:\Users\username\Pictures\Photo.jpg"  # Non-audio file
         ]
 
         # Input "/playlist test_list", then exit
@@ -292,20 +296,22 @@ class TestDBChatRepl(unittest.TestCase):
         run_repl(remote=True)
 
         # Assert directory creation was attempted
-        mock_makedirs.assert_called_with(r"D:\Users\steven\Music\Playlists", exist_ok=True)
+        mock_makedirs.assert_called_with(r"C:\Users\username\Music\Playlists", exist_ok=True)
         
         # Assert file writing was triggered for only the 2 audio files
         import sys
-        expected_playlist_path = r"D:\Users\steven\Music\Playlists/test_list.m3u" if sys.platform in ("darwin", "linux") else r"D:\Users\steven\Music\Playlists\test_list.m3u"
+        expected_playlist_path = r"C:\Users\username\Music\Playlists/test_list.m3u" if sys.platform in ("darwin", "linux") else r"C:\Users\username\Music\Playlists\test_list.m3u"
         mock_file.assert_called_with(expected_playlist_path, "w", encoding="utf-8")
         
         # Verify tracks written
         handle = mock_file()
         calls = [c[0][0] for c in handle.write.call_args_list]
-        self.assertIn("D:\\Users\\steven\\Music\\Track1.flac\n", calls)
-        self.assertIn("D:\\Users\\steven\\Music\\Track2.mp3\n", calls)
-        self.assertNotIn("D:\\Users\\steven\\Pictures\\Photo.jpg\n", calls)
+        self.assertIn("C:\\Users\\username\\Music\\Track1.flac\n", calls)
+        self.assertIn("C:\\Users\\username\\Music\\Track2.mp3\n", calls)
+        self.assertNotIn("C:\\Users\\username\\Pictures\\Photo.jpg\n", calls)
 
+
+    @patch.dict("os.environ", {"PLAYLIST_DIR": r"C:\Users\username\Music\Playlists"})
     @patch("builtins.input")
     @patch("requests.get")
     @patch("db_chat_repl.get_total_photos_count")
@@ -315,8 +321,8 @@ class TestDBChatRepl(unittest.TestCase):
         import db_chat_repl
         # Inject mock paths into last_query_paths
         db_chat_repl.last_query_paths = [
-            r"D:\Users\steven\Music\Track1.flac",
-            r"D:\Users\steven\Music\Track2.mp3"
+            r"C:\Users\username\Music\Track1.flac",
+            r"C:\Users\username\Music\Track2.mp3"
         ]
 
         # Input "/play", then exit
@@ -353,15 +359,16 @@ class TestDBChatRepl(unittest.TestCase):
         # Verify PlayByFilename was called for temp playlist
         import urllib.parse
         from db_chat_repl import PROJECT_DIR
-        playlist_dir = None
-        for candidate in (
-            r"D:\Users\steven\Music\Playlists",
-            "/Volumes/d-drive/Users/steven/Music/Playlists",
-            "/mnt/d/Users/steven/Music/Playlists"
-        ):
-            if os.path.exists(os.path.dirname(candidate)):
-                playlist_dir = candidate
-                break
+        playlist_dir = os.getenv("PLAYLIST_DIR")
+        if not playlist_dir:
+            for candidate in (
+                r"C:\Users\username\Music\Playlists",
+                "/Volumes/d-drive/Users/username/Music/Playlists",
+                "/mnt/d/Users/username/Music/Playlists"
+            ):
+                if os.path.exists(os.path.dirname(candidate)):
+                    playlist_dir = candidate
+                    break
         if not playlist_dir:
             playlist_dir = os.path.join(PROJECT_DIR, "Playlists")
             
@@ -396,8 +403,8 @@ class TestDBChatRepl(unittest.TestCase):
         import db_chat_repl
         # Inject mock paths into last_query_paths
         db_chat_repl.last_query_paths = [
-            r"D:\Users\steven\Music\Track1.flac",
-            r"D:\Users\steven\Music\Track2.mp3"
+            r"C:\Users\username\Music\Track1.flac",
+            r"C:\Users\username\Music\Track2.mp3"
         ]
 
         # Input "/queue 2", then exit
@@ -423,7 +430,7 @@ class TestDBChatRepl(unittest.TestCase):
         import sys
         import os
         import urllib.parse
-        encoded2 = urllib.parse.quote(r"D:\Users\steven\Music\Track2.mp3")
+        encoded2 = urllib.parse.quote(r"C:\Users\username\Music\Track2.mp3")
         jriver_host = os.getenv("JRIVER_HOST")
         if not jriver_host:
             try:

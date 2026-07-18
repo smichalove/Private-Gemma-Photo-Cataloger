@@ -188,14 +188,14 @@ class TestGemmaPhotoCataloger(unittest.TestCase):
         # Simulate walking a directory and finding some image files
         # os.walk returns generator of (dirpath, dirnames, filenames)
         mock_walk.return_value = [
-            (r"D:\Users\steven\Pictures", [], ["photo1.jpg", "photo2.png", "processed.jpg", "textfile.txt"])
+            (r"C:\Users\username\Pictures", [], ["photo1.jpg", "photo2.png", "processed.jpg", "textfile.txt"])
         ]
         
         # Paths that should be marked as processed to test the duplicate filter
         processed: Set[str] = {"photo2.png"}
         
         result: List[str] = get_image_files(
-            directories=[r"D:\Users\steven\Pictures"],
+            directories=[r"C:\Users\username\Pictures"],
             limit=10,
             processed_paths=processed
         )
@@ -204,8 +204,8 @@ class TestGemmaPhotoCataloger(unittest.TestCase):
         # photo2.png is in processed, textfile.txt is not a valid extension, processed.jpg is not in skipped list.
         # So photo1.jpg and processed.jpg should match.
         expected_paths: List[str] = [
-            os.path.join(r"D:\Users\steven\Pictures", "photo1.jpg"),
-            os.path.join(r"D:\Users\steven\Pictures", "processed.jpg")
+            os.path.join(r"C:\Users\username\Pictures", "photo1.jpg"),
+            os.path.join(r"C:\Users\username\Pictures", "processed.jpg")
         ]
         self.assertEqual(len(result), 2)
         self.assertIn(expected_paths[0], result)
@@ -225,7 +225,7 @@ class TestGemmaPhotoCataloger(unittest.TestCase):
         Returns:
             None
         """
-        file_path: str = r"D:\Users\steven\Pictures\photo1.jpg"
+        file_path: str = r"C:\Users\username\Pictures\photo1.jpg"
         summary_text: str = "Subject: A beautiful sunrise\nEnvironment: Outdoor\nTechnical: Shallow DoF\nTags: sun, dawn"
         summary_escaped: str = "Subject: A beautiful sunrise&#10;Environment: Outdoor&#10;Technical: Shallow DoF&#10;Tags: sun, dawn"
         
@@ -245,14 +245,15 @@ class TestGemmaPhotoCataloger(unittest.TestCase):
         
         # Verify first call (write) arguments
         called_args_write: List[str] = mock_run.call_args_list[0][0][0]
-        self.assertEqual(called_args_write[0], r"H:\Wan_project\exiftool\exiftool.exe")
+        self.assertEqual(called_args_write[0], "exiftool")
         self.assertIn("-overwrite_original", called_args_write)
         self.assertIn("-E", called_args_write)
         self.assertNotIn("-Caption-Abstract=", "".join(called_args_write))
         self.assertNotIn("-Description=", "".join(called_args_write))
         self.assertNotIn("-ImageDescription=", "".join(called_args_write))
         self.assertIn("-@", called_args_write)
-        self.assertTrue(called_args_write[-1].startswith(r"H:\Wan_project\exif_args_"))
+        from describe_photos import PROJECT_DIR
+        self.assertTrue(called_args_write[-1].startswith(os.path.join(PROJECT_DIR, "exif_args_")))
         
         # Verify that open was called to write the argfile
         handle = mock_file()
@@ -265,7 +266,7 @@ class TestGemmaPhotoCataloger(unittest.TestCase):
         
         # Verify second call (read) arguments
         called_args_read: List[str] = mock_run.call_args_list[1][0][0]
-        self.assertEqual(called_args_read[0], r"H:\Wan_project\exiftool\exiftool.exe")
+        self.assertEqual(called_args_read[0], "exiftool")
         self.assertIn("-j", called_args_read)
         self.assertIn("-charset", called_args_read)
         self.assertIn("UTF8", called_args_read)
@@ -273,7 +274,8 @@ class TestGemmaPhotoCataloger(unittest.TestCase):
         self.assertNotIn("-ImageDescription", called_args_read)
         self.assertNotIn("-Caption-Abstract", called_args_read)
         self.assertIn("-@", called_args_read)
-        self.assertTrue(called_args_read[-1].startswith(r"H:\Wan_project\exif_read_args_"))
+        from describe_photos import PROJECT_DIR
+        self.assertTrue(called_args_read[-1].startswith(os.path.join(PROJECT_DIR, "exif_read_args_")))
 
     @patch("builtins.open", new_callable=mock_open)
     @patch("os.replace")
@@ -297,15 +299,15 @@ class TestGemmaPhotoCataloger(unittest.TestCase):
             }
         ]
         
-        save_results(test_results, r"H:\Wan_project\photo_descriptions.json", is_milestone=False)
+        save_results(test_results, r"C:\Users\username\photo_descriptions.json", is_milestone=False)
         
         # Check that the file was written to the temp location first
-        mock_file.assert_called_with(r"H:\Wan_project\photo_descriptions.json.tmp", "w", encoding="utf-8")
+        mock_file.assert_called_with(r"C:\Users\username\photo_descriptions.json.tmp", "w", encoding="utf-8")
         
         # Verify the atomic replace was triggered to overwrite the main catalog path
         mock_replace.assert_called_once_with(
-            r"H:\Wan_project\photo_descriptions.json.tmp",
-            r"H:\Wan_project\photo_descriptions.json"
+            r"C:\Users\username\photo_descriptions.json.tmp",
+            r"C:\Users\username\photo_descriptions.json"
         )
 
     def test_save_results_to_sqlite(self) -> None:
