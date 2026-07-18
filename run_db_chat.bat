@@ -50,7 +50,9 @@ if not exist "%~dp0local\db_chat_repl.py" (
 
 :: 5. Execute database chat REPL in remote mode by default
 echo Starting database chat REPL (Remote)...
-python "%~dp0local\db_chat_repl.py" --db "%~dp0local\photo_catalog.db" --prompt "%~dp0local\db_prompt.txt" --remote %*
+set DB_PATH=%~dp0local\photo_catalog.db
+set PROMPT_FILE=db_prompt.txt
+python "%~dp0local\db_chat_repl.py" --remote %*
 
 if errorlevel 1 (
     echo(

@@ -203,7 +203,7 @@ graph TD
      - Instantiates chat prompt utilizing system prompt template (`db_prompt.txt`) containing schema details and syntax restrictions.
      - Polls local VLM (or remote Ollama endpoint) to translate user questions into SQL, runs query, and formats output.
      - Limits returned database rows to 50 to protect context window size.
-     - Implements CLI commands: `/clear` (wipes history window), `/paste` (multiline text input), `/fabric` (lists active compute nodes), and `/open <index>` (calls host's default viewer).
+     - Implements CLI commands: `/clear` (wipes history window), `/paste` (multiline text input), `/fabric` (lists active compute nodes), and `/open <index>` (calls host's default viewer; may require customization in `path_utils.py` for headless or WSL2 host sessions).
 
 5. [embed_metadata.py](file:///h:/photo_catloger_decoupled_pub/embed_metadata.py)
    - **Role**: Standalone post-processing script for high-performance bulk EXIF embedding.
@@ -275,6 +275,7 @@ The database `photo_catalog.db` holds a table `photos` structured as follows:
   5. Documented performance and VRAM management benefits (zero-overhead GPU access, filesystem speeds, and memory safety) of native Ubuntu hosting in the project's documentation.
   6. Added the `/fabric` and `/nodes` commands to the help instructions of `db_chat_repl.py` and updated `agents.md` to improve feature discoverability.
   7. Created a dedicated `sh/` directory containing equivalent Bash shell scripts for Linux/Ubuntu users, documenting in `README.md` that they can be run directly on native Ubuntu and other Linux clones, or under Windows WSL2 (via `wsl -u {user}`).
+  8. Handled unrecognized CLI arguments (`--db` and `--prompt`) in `db_chat_repl.py` invocation within `.sh` and `.bat` scripts by passing them as environment variables (`DB_PATH` and `PROMPT_FILE`) instead, preventing CLI parser crashes. Added environment-specific customization notes for `/open` in documentation.
 
 
 

@@ -19,4 +19,7 @@ echo "Starting Database Chat REPL (Remote Mode)"
 echo "=================================================="
 echo
 
-"$PYTHON_EXEC" local/db_chat_repl.py --db local/photo_catalog.db --prompt local/db_prompt.txt --remote "$@"
+export DB_PATH="$SCRIPT_DIR/local/photo_catalog.db"
+export PROMPT_FILE="db_prompt.txt"
+
+"$PYTHON_EXEC" local/db_chat_repl.py --remote "$@"

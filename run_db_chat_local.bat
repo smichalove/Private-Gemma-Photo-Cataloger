@@ -50,7 +50,9 @@ if not exist "%~dp0local\db_chat_repl.py" (
 
 :: 5. Execute database chat REPL in local mode (connecting to WSL2 container)
 echo Starting database chat REPL (Local)...
-python "%~dp0local\db_chat_repl.py" --db "%~dp0local\photo_catalog.db" --prompt "%~dp0local\db_prompt.txt" %*
+set DB_PATH=%~dp0local\photo_catalog.db
+set PROMPT_FILE=db_prompt.txt
+python "%~dp0local\db_chat_repl.py" %*
 
 if errorlevel 1 (
     echo(

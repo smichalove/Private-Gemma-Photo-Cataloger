@@ -265,6 +265,8 @@ The REPL client loads default parameters dynamically from environment variables 
 Within the REPL environment, you can use the following controls:
 *   `/clear` or `/reset`: Clears conversational history queue (which maintains up to a 20-message window).
 *   `open <index>` or `/open <index>`: Opens the photo corresponding to that bullet item index (e.g., `open 3`) in the host's default image viewer.
+    > [!NOTE]
+    > The `/open` command invokes native OS utilities: `open` on macOS, `os.startfile` on Windows, and `xdg-open` on Linux hosts. If running in a headless Linux server, VM, or WSL2 shell environment without a graphical desktop interface, `xdg-open` may fail. You can customize this launcher within the `open_file()` function inside [local/path_utils.py](file:///Volumes/HDrive/photo_catloger_decoupled_pub/local/path_utils.py) to target your terminal image viewer or host-side handler.
 *   `/paste`: Enters multiline input paste mode. Type `/end` on a separate line to finish and send your prompt.
 *   `exit` or `quit`: Exits the REPL.
 
