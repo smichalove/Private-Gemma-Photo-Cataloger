@@ -262,7 +262,7 @@ def has_embedded_metadata(file_path: str) -> bool:
     """
     try:
         cmd = [
-            r'H:\Wan_project\exiftool\exiftool.exe',
+            EXIFTOOL_PATH,
             '-s', '-S',
             '-Description',
             '-ImageDescription',
@@ -411,7 +411,7 @@ def verify_embedded_metadata(file_path: str, expected_text: str) -> bool:
             arg_f.write(file_path + "\n")
             
         cmd = [
-            r'H:\Wan_project\exiftool\exiftool.exe',
+            EXIFTOOL_PATH,
             '-j',
             '-charset', 'UTF8',
             '-charset', 'filename=utf8',
@@ -492,7 +492,7 @@ def inline_embed_metadata(file_path: str, summary_text: str) -> None:
                 arg_f.write(sidecar_path + "\n")
             
         cmd: List[str] = [
-            r'H:\Wan_project\exiftool\exiftool.exe',
+            EXIFTOOL_PATH,
             '-m', 
             '-E',                        # Decode HTML character entities (like &#10;) in values
             '-charset', 'iptc=UTF8',

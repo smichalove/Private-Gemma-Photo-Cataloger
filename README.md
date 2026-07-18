@@ -147,13 +147,24 @@ To set up and register your active compute hosts:
 ## 💻 Usage
 
 ### 1. Run via Batch Script (Windows Recommended)
-You can run the pipeline directly using the provided Windows batch file. This automatically activates your `venv` and runs the orchestrator:
-```bash
-# Run from PowerShell / Command Prompt:
-.\run_local_pipeline.bat
+You can run the pipeline directly using the provided Windows batch file or Linux shell script. This automatically activates your `venv` and runs the orchestrator:
 
-# You can also pass any CLI arguments directly to the batch file:
-.\run_local_pipeline.bat --max-photos 50 --batch-size 1
+#### Windows Host (CMD / PowerShell):
+```cmd
+# Run with default options:
+.\run_cataloger.bat
+
+# Pass any custom arguments directly:
+.\run_cataloger.bat --max-photos 50 --batch-size 1
+```
+
+#### Linux Host (Ubuntu / Ubuntu clones / WSL):
+```bash
+# Run with default options:
+./sh/run_cataloger.sh
+
+# Pass custom arguments directly:
+./sh/run_cataloger.sh --max-photos 50 --batch-size 1
 ```
 
 #### Run on a Single Image

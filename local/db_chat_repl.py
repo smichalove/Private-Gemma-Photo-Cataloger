@@ -966,7 +966,7 @@ def run_repl(remote: bool = False, model_name: str = "gemma4-it-q4:latest", host
                 print("[Playlist Error] ❌ None of the files in the last query are supported audio or video files.")
                 continue
                 
-            playlist_dir = r"D:\Users\steven\Music\Playlists"
+            playlist_dir = os.getenv("PLAYLIST_DIR", os.path.join(PROJECT_DIR, "Playlists"))
             try:
                 os.makedirs(playlist_dir, exist_ok=True)
             except Exception:
@@ -1062,15 +1062,16 @@ def run_repl(remote: bool = False, model_name: str = "gemma4-it-q4:latest", host
                 else:
                     # Target the local D: drive (d-drive) where JRiver is running,
                     # mapping the mount prefix depending on the client platform.
-                    playlist_dir = None
-                    for candidate in (
-                        r"D:\Users\steven\Music\Playlists",
-                        "/Volumes/d-drive/Users/steven/Music/Playlists",
-                        "/mnt/d/Users/steven/Music/Playlists"
-                    ):
-                        if os.path.exists(os.path.dirname(candidate)):
-                            playlist_dir = candidate
-                            break
+                    playlist_dir = os.getenv("PLAYLIST_DIR")
+                    if not playlist_dir:
+                        for candidate in (
+                            r"D:\Users\steven\Music\Playlists",
+                            "/Volumes/d-drive/Users/steven/Music/Playlists",
+                            "/mnt/d/Users/steven/Music/Playlists"
+                        ):
+                            if os.path.exists(os.path.dirname(candidate)):
+                                playlist_dir = candidate
+                                break
                     if not playlist_dir:
                         playlist_dir = os.path.join(PROJECT_DIR, "Playlists")
                         
@@ -1154,7 +1155,12 @@ def run_repl(remote: bool = False, model_name: str = "gemma4-it-q4:latest", host
                 if not has_db:
                     full_args.extend(["--db", DB_PATH])
                 if not has_dir:
-                    full_args.extend(["--dir", "D:\\Users\\steven\\Pictures"])
+                    env_dirs = os.getenv("PICTURE_DIRECTORIES")
+                    if env_dirs:
+                        first_dir = env_dirs.split(",")[0].strip()
+                        full_args.extend(["--dir", first_dir])
+                    else:
+                        full_args.extend(["--dir", "images"])
                 
                 if "--no-json" not in args_list:
                     full_args.append("--no-json")
