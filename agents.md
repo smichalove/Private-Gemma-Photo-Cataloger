@@ -8,10 +8,10 @@
 ## 1. System Performance & Model Guidelines
 
 Leverage the system's hardware configuration to maximize performance where possible (e.g., using larger batches, caching, multi-processing, GPU acceleration, or more thread workers):
-*   **CPU**: AMD Ryzen 9 5950X 16-Core Processor (32 thread workers)
-*   **GPU**: NVIDIA GeForce RTX 5080 GPU
-*   **Memory**: 128GB of DDR4 RAM
-*   **I/O vs GPU Inference Bottlenecks**: Do not overestimate I/O bottlenecks during local VLM batch inference. Because model inference on the RTX 5080 takes significantly longer than reading and base64-encoding images on a high-speed CPU/SSD, CPU pre-processing finishes well before the GPU is ready. Consequently, scaling CPU threads/workers (e.g., raising `--max-workers` beyond the default 8) yields no performance speedup. Focus optimization efforts on model batch sizes and memory caching rather than I/O parallelism.
+*   **CPU**: High-performance multi-core CPU (e.g., AMD Ryzen or Intel Core series)
+*   **GPU**: NVIDIA GPU with 16GB+ VRAM (e.g., RTX 4080 / 5080 / 4090 / 5090)
+*   **Memory**: 32GB+ RAM
+*   **I/O vs GPU Inference Bottlenecks**: Do not overestimate I/O bottlenecks during local VLM batch inference. Because model inference on the GPU takes significantly longer than reading and base64-encoding images on a high-speed CPU/SSD, CPU pre-processing finishes well before the GPU is ready. Consequently, scaling CPU threads/workers (e.g., raising `--max-workers` beyond the default 8) yields no performance speedup. Focus optimization efforts on model batch sizes and memory caching rather than I/O parallelism.
 *   **Model Confirmation**: If you feel a need to change models, this MUST be confirmed and approved by the user prior to making any changes.
 
 ---
@@ -241,5 +241,20 @@ The database `photo_catalog.db` holds a table `photos` structured as follows:
 - **WSL2 Resource Limits**: Executing indexing runs and database queries simultaneously can overwhelm GPU VRAM/RAM, triggering CUDA OOMs or container crashes. Avoid running active cataloging and chat loops concurrently on the same GPU.
 - **BitsAndBytes LayerNorm Casting**: Standard HuggingFace library implementations fail to cast LayerNorm weight matrices properly under 4-bit quantization, causing `Gemma4UnifiedVisionEmbedder` runtime errors. Ensure `patch_gemma4_unified` is always imported and run before initializing VLM weights on startup.
 - **Blackwell GPU Optimizations**: The model server launches inside the WSL2 Docker container with environment flag `BNB_CUDA_VERSION=130` (in `wsl_client.py`), which optimizes BitsAndBytes execution for Blackwell generation GPUs (like RTX 5080 / 5090). For non-Blackwell architectures (e.g. RTX 4080 Ada Lovelace, RTX 3080 Ampere, etc.), this environment variable should be edited/tuned to match the device's CUDA runtime version (e.g., `121` or `118`) to prevent runtime warning flags or performance drops.
+
+
+---
+
+## 10. Post-Mortem Logs
+
+### Session 2026-07-18: Resolution of static analysis import error for `db_chat_repl`
+
+* **Failure**: Static analysis engines (like Pylance/VS Code) and local test discovery tools reported `Cannot find module db_chat_repl` when inspecting `tests/test_db_chat_repl.py` or references to `local/db_chat_repl.py`.
+* **Root Cause**: The script `db_chat_repl.py` and other modules are located inside the nested directory `local/`. The unit tests programmatically inject `local/` into `sys.path` at runtime, but static analyzers do not run Python code, so they could not locate the modules.
+* **Resolution**:
+  1. Configured the workspace-level `.env` file to set `PYTHONPATH=local`.
+  2. Created `.vscode/settings.json` specifying `python.analysis.extraPaths` and `python.autoComplete.extraPaths` for `./local` to natively instruct editors to resolve modules within that directory.
+  3. Ran a full workspace compilation check (`python3 -m compileall -f .`) to ensure syntax compatibility across all modules.
+
 
 

@@ -1,18 +1,21 @@
 ---
-title: "Local Gemma 4 Offline Photo Cataloger (v2.0.0)"
-description: "A private, offline vision-language-driven photo cataloging pipeline. Scans local images, generates descriptive metadata using Google's Gemma 4 VLM inside a WSL2 Docker container, saves to SQLite/JSON, and embeds description headers natively back into EXIF tags."
-keywords: ["gemma-4-vlm", "offline-photo-cataloger", "local-vision-language-model", "exif-metadata-embedding", "sqlite-database-chat-repl", "wsl2-docker-gemma", "image-tagging-ai", "private-photo-archiver"]
-version: "2.0.0"
+title: "Local Gemma 4 Offline Photo Cataloger (v2.1.0)"
+description: "A private, offline vision-language-driven photo cataloging pipeline with LAN Compute Fabric. Scans local images, generates descriptive metadata using Google's Gemma 4 VLM across distributed nodes, saves to PostgreSQL/SQLite, and embeds description headers natively back into EXIF tags."
+keywords: ["gemma-4-vlm", "offline-photo-cataloger", "local-vision-language-model", "exif-metadata-embedding", "postgres-database-chat-repl", "compute-fabric-lan", "image-tagging-ai", "private-photo-archiver"]
+version: "2.1.0"
 ---
 
-# Local Gemma 4 Offline Photo Cataloger (v2.0.0)
+# Local Gemma 4 Offline Photo Cataloger (v2.1.0)
 
-### 🔍 Private Offline AI Photo Cataloging, Natural Language SQLite Querying, and EXIF Metadata Embedding using Google Gemma 4 (v2.0.0)
+### 🔍 Private Offline AI Photo Cataloging, Natural Language PostgreSQL Querying, EXIF Metadata Embedding, and LAN Compute Fabric using Google Gemma 4 (v2.1.0)
 
 A private, offline vision-language-driven photo cataloging pipeline. This application scans directory trees recursively, analyzes images in parallel, generates structured descriptive metadata, and optionally embeds descriptions natively back into the image file EXIF headers.
 
-It runs entirely offline on local hardware using Google's encoder-free **Gemma 4 12B IT** multimodal model inside a WSL2 Docker container with BitsAndBytes 4-bit quantization.
+It runs entirely offline on local hardware using Google's encoder-free **Gemma 4 12B IT** multimodal model inside a WSL2 Docker container with BitsAndBytes 4-bit quantization, distributed across a high-speed local network compute fabric.
 
+> [!WARNING]
+> **SQLite Backend Deprecation**:
+> The SQLite database backend (`local/photo_catalog.db`) is now deprecated and maintained purely for legacy compatibility. PostgreSQL is now the primary, recommended database backend for metadata indexing and dynamic compute fabric querying.
 
 > [!NOTE]
 > **Looking for a Cloud-Based Pipeline?**
@@ -27,7 +30,7 @@ Depending on your hardware capability, budget, and description requirements, you
 | :--- | :--- | :--- |
 | **Primary Model** | Gemma 4 12B IT (Quantized 4-bit) | Gemini 2.5 Flash / Pro |
 | **Cost** | **100% Free** (No API or cloud charges) | Paid GCP Vertex AI API usage |
-| **Hardware** | NVIDIA GPU with **16GB+ VRAM** (e.g., RTX 5000/5080 Blackwell, RTX 4080, etc.) | Standard CPU / low-end systems (no local GPU needed) |
+| **Hardware** | NVIDIA GPU with **16GB+ VRAM** (e.g., RTX 4080/5080/4090/5090 etc.) | Standard CPU / low-end systems (no local GPU needed) |
 | **Speed** | Slower (limited by local GPU batch processing) | Extremely fast (processed in parallel by Vertex AI) |
 | **Description Detail**| Structured JSON summaries (tags & environment) | Comprehensive, detailed descriptions & narrative paragraphs |
 | **Data Privacy** | **Absolute** (all processing remains offline on-disk) | Images processed remotely via secure Google Cloud servers |
@@ -37,37 +40,9 @@ Depending on your hardware capability, budget, and description requirements, you
 
 ## 🛠️ System Architecture
 
-```
-                       ┌────────────────────────┐
-                       │   Directory Crawler    │
-                       └───────────┬────────────┘
-                                   │
-                                   ▼
-                       ┌────────────────────────┐
-                       │  Deduplication Check   │
-                       └───────────┬────────────┘
-                                   │
-                                   ▼
-                       ┌────────────────────────┐
-                       │   Base64 Image Batch   │
-                       └───────────┬────────────┘
-                                   │
-                                   ▼
-                       ┌────────────────────────┐
-                       │    WSL2 Docker VLM     │
-                       │    (gemma-4-12B-it)    │
-                       └───────────┬────────────┘
-                                   │
-                                   ▼
-                       ┌────────────────────────┐
-                       │ Output JSON Database   │
-                       └───────────┬────────────┘
-                                   │
-                                   ▼
-                       ┌────────────────────────┐
-                       │ ExifTool Writer        │
-                       └────────────────────────┘
-```
+![Local Compute Fabric & Model Topology](images/local_models.jpeg)
+
+*Visual blueprint of the private compute fabric distribution nodes and server routing topologies.*
 
 ---
 
@@ -100,13 +75,23 @@ You must install **ExifTool** locally on the host machine:
     ```bash
     cp .env.example .env
     ```
-5.  Configure `.env` with your photo directories and execution parameters. Here is a baseline example of the configuration:
+5.  Configure `.env` with your photo directories, database parameters, and execution parameters. Here is a baseline example of the configuration:
     ```env
     # Comma-separated list of directories to scan (e.g., C:\Pictures,D:\Photos)
     PICTURE_DIRECTORIES=C:\path\to\your\pictures,D:\another\folder
 
-    # Database and tracking paths
+    # Database Backend Selection ('sqlite' [deprecated] or 'postgresql')
+    DB_BACKEND=postgresql
+
+    # PostgreSQL Connection Parameters (only used if DB_BACKEND=postgresql)
+    DB_NAME=photo_catalog
+    DB_USER=postgres
+    DB_HOST=your-database-host-example.lan
+    DB_PORT=5432
+
+    # Database and tracking paths (SQLite legacy fallbacks)
     OUTPUT_DATABASE_PATH=photo_descriptions.json
+    OUTPUT_DATABASE_SQLITE=local/photo_catalog.db
     SUBMITTED_CACHE_PATH=submitted_photos_cache.txt
 
     # Path to the ExifTool executable (defaults to "exiftool" if in system PATH)
@@ -122,7 +107,7 @@ You must install **ExifTool** locally on the host machine:
 
 ### 3. GPU Hardware & Docker Container Setup (WSL2)
 
-*   **Hardware Requirement**: An NVIDIA GPU with at least **16GB of VRAM** (e.g., Blackwell generation RTX 5000 / RTX 5080, Ada Lovelace RTX 4080, or Ampere/Turing equivalents).
+*   **Hardware Requirement**: An NVIDIA GPU with at least **16GB of VRAM** (e.g., RTX 5080, RTX 4080, or Ampere/Turing equivalents).
 *   Ensure **WSL2** and **Docker Desktop** (with the WSL2 backend enabled) are installed on your Windows host.
     - If you need to set up or configure WSL2, follow the official [Microsoft WSL2 Installation Guide](https://learn.microsoft.com/en-us/windows/wsl/install) to provision your subsystem.
 *   **Docker User Permissions inside WSL2**: The WSL user account (configured via `WSL_USER` in `.env`) must be allowed to run Docker commands without prefixing `sudo`:
@@ -172,6 +157,18 @@ To stop the model server and release all GPU VRAM when you are finished catalogi
 > The server initialization script ([wsl_client.py](local/wsl_client.py)) defaults to parameters optimized for Blackwell GPUs (like `BNB_CUDA_VERSION=130` on line 124).
 > If you are running on an older generation (e.g., Ada Lovelace RTX 40-series, Ampere RTX 30-series, or older CUDA setups), you can edit the `BNB_CUDA_VERSION` environment flag inside [wsl_client.py](local/wsl_client.py#L124) to match your GPU's CUDA runtime version (e.g., `121` or `118`).
 
+### 4. LAN Compute Fabric Database Initialization
+
+Version 2.1 introduces the **Modular Compute Fabric** (`fabric_manager.py`) which discovers and health-checks active VLM server nodes across your local area network (LAN).
+
+To set up and register your active compute hosts:
+1. Make sure your database server is running (e.g. PostgreSQL).
+2. Configure the database connection parameters in your `.env` file (see `.env.example`).
+3. Run the database setup script to create and seed the `compute_nodes` table in PostgreSQL:
+   ```bash
+   python local/instantiate_fabric_db.py
+   ```
+
 ---
 
 ## 💻 Usage
@@ -209,10 +206,11 @@ python local/describe_photos.py --embed-exif --batch-size 2
 This script automatically:
 1. Spins up the WSL2 container.
 2. Launches the FastAPI server inside it (if not already running).
-3. Crawls your configured image folders recursively.
-4. Feeds Base64 image payloads in parallel CPU batches to the VLM.
-5. Serializes output tags to the local `photo_descriptions.json` database.
-6. Natively embeds descriptions back to image EXIF file headers using ExifTool.
+3. Query the Compute Fabric registry (`fabric_manager.py`) to discover online nodes.
+4. Crawls your configured image folders recursively.
+5. Feeds Base64 image payloads in parallel CPU batches to active VLM nodes.
+6. Serializes output tags to the local `photo_descriptions.json` database.
+7. Natively embeds descriptions back to image EXIF file headers using ExifTool.
 
 ### ⚙️ Command-Line Arguments
 Override default settings using the following runtime options:
@@ -301,18 +299,17 @@ This script reads the `.env` settings, normalizes file paths across operating sy
 
 ## 🗄️ Database Migrations
 
-This release focuses strictly on direct SQLite database output and the DB Chat client interface. To keep the codebase lightweight and clean, utility scripts for importing/migrating legacy JSON catalogs are omitted from this core distribution. 
+This release focuses strictly on direct PostgreSQL/SQLite database output and the DB Chat client interface. To keep the codebase lightweight and clean, utility scripts for importing/migrating legacy JSON catalogs are omitted from this core distribution. 
 
-If you have existing photo databases saved in `photo_descriptions.json` format, you can easily write a simple Python script to import that JSON array and upsert its entries into the `photos` SQLite table. The `photos` table schema details are documented in `local/db_prompt.txt`.
-
+If you have existing photo databases saved in `photo_descriptions.json` format, you can easily write a simple Python script to import that JSON array and upsert its entries into the `photos` PostgreSQL/SQLite table. The table schema details are documented in `local/db_prompt.txt`.
 
 ## 🧪 Testing
 
 Run the mock-based unit tests to verify script logic:
 ```bash
 # Test the image describer pipeline logic
-python -m unittest local/tests/test_describe_photos.py
+python -m unittest tests/test_describe_photos.py
 
 # Test the DB Chat REPL client logic
-python -m unittest local/tests/test_db_chat_repl.py
+python -m unittest tests/test_db_chat_repl.py
 ```
