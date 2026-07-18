@@ -1,3 +1,4 @@
+Discalmer: This work is my own and does not represent Google nor its affiliates ⛔️
 ---
 title: "Local Gemma 4 Offline Photo Cataloger (v2.1.0)"
 description: "A private, offline vision-language-driven photo cataloging pipeline with LAN Compute Fabric. Scans local images, generates descriptive metadata using Google's Gemma 4 VLM across distributed nodes, saves to PostgreSQL/SQLite, and embeds description headers natively back into EXIF tags."
