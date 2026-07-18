@@ -203,7 +203,7 @@ graph TD
      - Instantiates chat prompt utilizing system prompt template (`db_prompt.txt`) containing schema details and syntax restrictions.
      - Polls local VLM (or remote Ollama endpoint) to translate user questions into SQL, runs query, and formats output.
      - Limits returned database rows to 50 to protect context window size.
-     - Implements CLI commands: `/clear` (wipes history window), `/paste` (multiline text input), and `/open <index>` (calls host's default viewer).
+     - Implements CLI commands: `/clear` (wipes history window), `/paste` (multiline text input), `/fabric` (lists active compute nodes), and `/open <index>` (calls host's default viewer).
 
 5. [embed_metadata.py](file:///h:/photo_catloger_decoupled_pub/embed_metadata.py)
    - **Role**: Standalone post-processing script for high-performance bulk EXIF embedding.
@@ -273,6 +273,7 @@ The database `photo_catalog.db` holds a table `photos` structured as follows:
   3. Integrated a native background execution flow using `subprocess.Popen` to launch the local `uvicorn` FastAPI server directly when running on native Linux.
   4. Updated documentation in `agents.md` and `README.md` to formally deprecate WSL/Docker containerization and explain the pure Windows-client/Ubuntu-server native setup.
   5. Documented performance and VRAM management benefits (zero-overhead GPU access, filesystem speeds, and memory safety) of native Ubuntu hosting in the project's documentation.
+  6. Added the `/fabric` and `/nodes` commands to the help instructions of `db_chat_repl.py` and updated `agents.md` to improve feature discoverability.
 
 
 

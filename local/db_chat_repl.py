@@ -757,6 +757,7 @@ def run_repl(remote: bool = False, model_name: str = "gemma4-it-q4:latest", host
     print("  * Type '/load [name]' to resume a session (default: last_chat).")
     print("  * Type '/load list' to show all available saved sessions.")
     print("  * Type '/clear' or '/reset' to clear chat history.")
+    print("  * Type '/fabric' or '/nodes' to show the compute fabric status.")
     print("  * Type 'exit' or 'quit' to close the client.")
     print("==================================================")
     print()
