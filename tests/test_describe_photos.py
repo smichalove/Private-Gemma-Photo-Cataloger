@@ -444,5 +444,53 @@ class TestGemmaPhotoCataloger(unittest.TestCase):
                 os.remove(db_path)
 
 
+    def test_save_results_to_sqlite_instantiates_full_schema(self) -> None:
+        """
+        Tests that save_results_to_sqlite instantiates a non-existent SQLite database
+        with the full migrated schema (including extended metadata columns).
+        """
+        import tempfile
+        import sqlite3
+        
+        db_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+        db_path = db_file.name
+        db_file.close()
+        if os.path.exists(db_path):
+            os.remove(db_path)
+            
+        try:
+            test_results: List[Dict[str, Any]] = [
+                {
+                    "full_path": r"D:\Pictures\schema_test.jpg",
+                    "primary_subject": "Schema Test Subject",
+                    "environment": "Test Env",
+                    "suggested_tags": ["test"],
+                    "technical_details": "ISO 100",
+                    "detected_objects": ["object"]
+                }
+            ]
+            
+            save_results_to_sqlite(db_path, test_results)
+            
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("PRAGMA table_info(photos)")
+            columns = {row[1] for row in cursor.fetchall()}
+            conn.close()
+            
+            expected_columns = {
+                "id", "full_path", "rel_path", "primary_subject", "environment",
+                "suggested_tags", "technical_details", "detected_objects",
+                "detected_faces", "acdsee_tags", "rating", "label", "author",
+                "gps_latitude", "gps_longitude", "gps_altitude", "raw_metadata",
+                "acdsee_metadata_imported_at", "file_mtime"
+            }
+            
+            self.assertTrue(expected_columns.issubset(columns), f"Missing columns in instantiated DB: {expected_columns - columns}")
+        finally:
+            if os.path.exists(db_path):
+                os.remove(db_path)
+
+
 if __name__ == "__main__":
     unittest.main()

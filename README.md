@@ -301,7 +301,18 @@ This script reads the `.env` settings, normalizes file paths across operating sy
 
 ---
 
-## 🗄️ Database Migrations
+## 🗄️ Database Setup & Migrations
+
+To instantiate the database schema and compute fabric registry tables across PostgreSQL and/or SQLite:
+```bash
+# Instantiate all configured backends (PostgreSQL & SQLite) with complete schema and seed parity:
+python local/instantiate_fabric_db.py --backend all
+
+# Instantiate a standalone SQLite database catalog:
+python local/instantiate_fabric_db.py --backend sqlite --sqlite-path local/photo_catalog.db
+```
+
+When running `describe_photos.py` on a fresh environment, any newly instantiated SQLite `.db` file automatically creates the `photos` table with full 19-column schema migration support (`rating`, `label`, `author`, `detected_faces`, `acdsee_tags`, `gps_latitude`, `gps_longitude`, `gps_altitude`, `raw_metadata`, `acdsee_metadata_imported_at`, `file_mtime`) on initial batch save.
 
 This release focuses strictly on direct PostgreSQL/SQLite database output and the DB Chat client interface. To keep the codebase lightweight and clean, utility scripts for importing/migrating legacy JSON catalogs are omitted from this core distribution. 
 

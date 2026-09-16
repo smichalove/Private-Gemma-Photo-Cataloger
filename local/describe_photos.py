@@ -739,6 +739,9 @@ def save_results_to_sqlite(db_path: str, results_to_save: List[Dict[str, Any]]) 
                 cursor.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_photos_full_path ON photos (full_path)")
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_photos_rel_path ON photos (rel_path)")
             
+            # Ensure table has all migrated columns (e.g. rating, label, detected_faces, gps, etc.)
+            migrate_photos_schema(conn, backend)
+            
             insert_data: List[Tuple[str, str, str, str, str, str, str]] = []
             for item in results_to_save:
                 full_path: str = item.get("full_path", "")
